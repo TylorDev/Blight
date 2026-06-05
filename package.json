@@ -1,0 +1,40 @@
+{
+  "name": "blight",
+  "version": "0.1.0",
+  "private": true,
+  "main": "out/main/main.js",
+  "scripts": {
+    "dev": "node scripts/dev.cjs",
+    "dev:raw": "electron-vite dev",
+    "build": "tsc --noEmit && electron-vite build",
+    "test": "npm run prisma:generate && vitest run",
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
+    "db:init": "tsx prisma/init.ts",
+    "prisma:seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "6.8.2",
+    "@radix-ui/react-dialog": "^1.1.14",
+    "@radix-ui/react-select": "^2.2.5",
+    "@radix-ui/react-tabs": "^1.1.12",
+    "@radix-ui/react-tooltip": "^1.2.7",
+    "electron": "^35.2.1",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.4.1",
+    "electron-vite": "^3.1.0",
+    "prisma": "6.8.2",
+    "sass": "^1.89.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vitest": "^4.1.8"
+  }
+}

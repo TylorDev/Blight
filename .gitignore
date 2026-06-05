@@ -1,0 +1,10 @@
+node_modules
+.env
+dist
+dist-electron
+.vite
+out
+*.db
+*.db-journal
+.test-db-*.db
+prisma/dev.db

@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum StockCategory {
+  TABLAS
+  TELAS
+  DIARIOS_VACIOS
+  ARTEFACTOS
+}
+
+enum Tier {
+  T5
+  T6
+  T7
+  T8
+}
+
+enum MovementType {
+  COMPRA
+  CONSUMO
+}
+
+enum TicketStatus {
+  ABIERTO
+  CERRADO
+}
+
+model StockItem {
+  id          String        @id @default(cuid())
+  category    StockCategory
+  tier        Tier
+  quantity    Int           @default(0)
+  total       Float         @default(0)
+  averageCost Float         @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([category, tier])
+}
+
+model StockMovement {
+  id        String        @id @default(cuid())
+  type      MovementType
+  category  StockCategory
+  tier      Tier
+  quantity  Int
+  total     Float
+  ticketId  String?
+  ticket    FabricationTicket? @relation(fields: [ticketId], references: [id])
+  createdAt DateTime      @default(now())
+}
+
+model FabricationTicket {
+  id              String              @id @default(cuid())
+  tier            Tier
+  status          TicketStatus        @default(ABIERTO)
+  tax             Float               @default(1)
+  staffQuantity   Int                 @default(6)
+  craftingTax     Float               @default(0)
+  materialTotal   Float               @default(0)
+  filledDiariesQuantity Int           @default(0)
+  filledDiariesDiscount Float         @default(0)
+  leftoverTablesQuantity Int          @default(0)
+  leftoverTablesValue Float           @default(0)
+  leftoverClothsQuantity Int          @default(0)
+  leftoverClothsValue Float           @default(0)
+  appliedLeftoverDiscount Float       @default(0)
+  investmentTotal Float               @default(0)
+  unitCost        Float               @default(0)
+  openedAt        DateTime            @default(now())
+  closedAt        DateTime?
+  movements       StockMovement[]
+  consumptions    TicketConsumption[]
+  sourceLeftoverCredits TicketLeftoverCredit[] @relation("SourceTicketLeftovers")
+  appliedLeftoverCredits TicketLeftoverCredit[] @relation("AppliedTicketLeftovers")
+}
+
+model TicketConsumption {
+  id              String            @id @default(cuid())
+  ticketId        String
+  ticket          FabricationTicket @relation(fields: [ticketId], references: [id])
+  category        StockCategory
+  tier            Tier
+  quantity        Int
+  discountedTotal Float
+  averageCostUsed Float
+  createdAt       DateTime          @default(now())
+}
+
+model TicketLeftoverCredit {
+  id                String             @id @default(cuid())
+  tier              Tier
+  category          StockCategory
+  quantity          Int
+  value             Float
+  sourceTicketId    String
+  sourceTicket      FabricationTicket  @relation("SourceTicketLeftovers", fields: [sourceTicketId], references: [id])
+  appliedToTicketId String?
+  appliedToTicket   FabricationTicket? @relation("AppliedTicketLeftovers", fields: [appliedToTicketId], references: [id])
+  createdAt         DateTime           @default(now())
+  appliedAt         DateTime?
+}
