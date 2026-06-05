@@ -3,7 +3,7 @@ import { Check, Loader2, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import type { FabricationTicketView, LeftoverCreditView } from "../../../electron/types";
 import { categoryLabels, formatCurrency, formatDate } from "../../app-data";
-import { EmptyState, Recipe, TicketCosts, TierBadge } from "../../components";
+import { EmptyState, Recipe, TicketCosts, TierBadge } from "../../Components";
 import { useHistoryStore } from "../../stores/history-store";
 import { useStockStore } from "../../stores/stock-store";
 import { useTicketStore } from "../../stores/ticket-store";

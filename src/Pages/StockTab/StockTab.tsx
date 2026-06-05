@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { AppTier, Category, StockItemView } from "../../../electron/types";
 import {
   categories,
@@ -8,16 +9,23 @@ import {
   tierLabels,
   tiers
 } from "../../app-data";
-import { SelectField, TierBadge } from "../../components";
-import { selectFilteredStock, useStockStore } from "../../stores/stock-store";
+import { SelectField, TierBadge } from "../../Components";
+import { useStockStore } from "../../stores/stock-store";
 import "./StockTab.scss";
 
 export function StockTab() {
+  const stock = useStockStore((state) => state.stock);
   const categoryFilter = useStockStore((state) => state.categoryFilter);
   const tierFilter = useStockStore((state) => state.tierFilter);
   const setCategoryFilter = useStockStore((state) => state.setCategoryFilter);
   const setTierFilter = useStockStore((state) => state.setTierFilter);
-  const filteredStock = useStockStore(selectFilteredStock);
+  const filteredStock = useMemo(() => {
+    return stock.filter((item) => {
+      const categoryMatches = categoryFilter === "TODOS" || item.category === categoryFilter;
+      const tierMatches = tierFilter === "TODOS" || item.tier === tierFilter;
+      return categoryMatches && tierMatches;
+    });
+  }, [categoryFilter, stock, tierFilter]);
 
   return (
     <>

@@ -1,6 +1,6 @@
 import type { FabricationTicketView } from "../../../electron/types";
 import { categoryLabels, formatCurrency, formatDate } from "../../app-data";
-import { EmptyState, TicketCosts, TierBadge } from "../../components";
+import { EmptyState, TicketCosts, TierBadge } from "../../Components";
 import { useHistoryStore } from "../../stores/history-store";
 import "./HistoryTab.scss";
 

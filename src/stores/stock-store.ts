@@ -8,11 +8,6 @@ import type {
 } from "../../electron/types";
 import type { FilterValue } from "../app-data";
 
-interface StockTotals {
-  quantity: number;
-  total: number;
-}
-
 interface StockStore {
   stock: StockItemView[];
   loading: boolean;
@@ -84,21 +79,3 @@ export const useStockStore = create<StockStore>((set, get) => ({
     }
   }
 }));
-
-export function selectFilteredStock(state: StockStore) {
-  return state.stock.filter((item) => {
-    const categoryMatches = state.categoryFilter === "TODOS" || item.category === state.categoryFilter;
-    const tierMatches = state.tierFilter === "TODOS" || item.tier === state.tierFilter;
-    return categoryMatches && tierMatches;
-  });
-}
-
-export function selectStockTotals(state: StockStore): StockTotals {
-  return state.stock.reduce(
-    (summary, item) => ({
-      quantity: summary.quantity + item.quantity,
-      total: summary.total + item.total
-    }),
-    { quantity: 0, total: 0 }
-  );
-}
