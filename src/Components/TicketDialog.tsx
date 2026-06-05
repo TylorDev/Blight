@@ -3,6 +3,7 @@ import { Factory, Loader2, Plus, X } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import type { AppTier } from "../../electron/types";
 import { calculateTicketPreview, staffQuantity, tierLabels, tiers } from "../app-data";
+import { normalizeThousandsInput, parseThousands } from "../number-format";
 import { useStockStore } from "../stores/stock-store";
 import { useTicketStore } from "../stores/ticket-store";
 import { Recipe } from "./Recipe";
@@ -17,14 +18,14 @@ export function TicketDialog() {
   const [error, setError] = useState<string | null>(null);
   const stock = useStockStore((state) => state.stock);
   const createTicket = useTicketStore((state) => state.createTicket);
-  const preview = useMemo(() => calculateTicketPreview(stock, tier, Number(tax)), [stock, tax, tier]);
+  const preview = useMemo(() => calculateTicketPreview(stock, tier, parseThousands(tax)), [stock, tax, tier]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSaving(true);
     setError(null);
     try {
-      await createTicket({ tier, tax: Number(tax) });
+      await createTicket({ tier, tax: parseThousands(tax) });
       setTax("1");
       setOpen(false);
     } catch (currentError) {
@@ -56,7 +57,13 @@ export function TicketDialog() {
             />
             <label className="field">
               Tax
-              <input value={tax} onChange={(event) => setTax(event.target.value)} type="number" min="1" max="1000" />
+              <input
+                value={tax}
+                onChange={(event) => setTax(normalizeThousandsInput(event.target.value))}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9.]*"
+              />
             </label>
             <label className="field">
               Cantidad Bastones Total

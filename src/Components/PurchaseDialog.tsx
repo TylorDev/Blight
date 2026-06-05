@@ -3,6 +3,7 @@ import { Check, Loader2, Plus, X } from "lucide-react";
 import { FormEvent, useState } from "react";
 import type { AppTier, Category } from "../../electron/types";
 import { categories, categoryLabels, tierLabels, tiers } from "../app-data";
+import { normalizeThousandsInput, parseThousands } from "../number-format";
 import { useStockStore } from "../stores/stock-store";
 import { SelectField } from "./SelectField";
 
@@ -24,8 +25,8 @@ export function PurchaseDialog() {
       await createPurchase({
         category,
         tier,
-        quantity: Number(quantity),
-        total: Number(total)
+        quantity: parseThousands(quantity),
+        total: parseThousands(total)
       });
       setOpen(false);
       setQuantity("1");
@@ -66,11 +67,23 @@ export function PurchaseDialog() {
             />
             <label className="field">
               Cantidad
-              <input value={quantity} onChange={(event) => setQuantity(event.target.value)} type="number" min="1" />
+              <input
+                value={quantity}
+                onChange={(event) => setQuantity(normalizeThousandsInput(event.target.value))}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9.]*"
+              />
             </label>
             <label className="field">
               Precio total
-              <input value={total} onChange={(event) => setTotal(event.target.value)} type="number" min="1" />
+              <input
+                value={total}
+                onChange={(event) => setTotal(normalizeThousandsInput(event.target.value))}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9.]*"
+              />
             </label>
             {error ? <p className="form-error">{error}</p> : null}
             <div className="modal-actions">

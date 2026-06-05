@@ -7,7 +7,7 @@
     "dev": "node scripts/dev.cjs",
     "dev:raw": "electron-vite dev",
     "build": "tsc --noEmit && electron-vite build",
-    "test": "npm run prisma:generate && vitest run",
+    "test": "npm run prisma:generate && vitest run --configLoader runner",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "db:init": "tsx prisma/init.ts",

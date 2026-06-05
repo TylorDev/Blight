@@ -3,6 +3,7 @@ import { Check, Loader2, PackagePlus, X } from "lucide-react";
 import { FormEvent, useState } from "react";
 import type { AppTier, Category } from "../../electron/types";
 import { categories, categoryLabels, createEmptyBulkDraft, tierLabels, tiers } from "../app-data";
+import { normalizeThousandsInput, parseThousands } from "../number-format";
 import { useStockStore } from "../stores/stock-store";
 import { SelectField } from "./SelectField";
 import { TierBadge } from "./TierBadge";
@@ -46,8 +47,8 @@ export function BulkPurchaseDialog() {
           throw new Error(`Completa Cantidad y Total en ${categoryLabels[category]} ${tier}.`);
         }
 
-        const quantity = Number(row.quantity);
-        const total = Number(row.total);
+        const quantity = parseThousands(row.quantity);
+        const total = parseThousands(row.total);
 
         if (quantity <= 0 || total <= 0) {
           throw new Error(`Cantidad y Total deben ser mayores a cero en ${categoryLabels[category]} ${tier}.`);
@@ -103,16 +104,18 @@ export function BulkPurchaseDialog() {
                   </span>
                   <input
                     value={draft[category].quantity}
-                    onChange={(event) => updateDraft(category, "quantity", event.target.value)}
-                    type="number"
-                    min="1"
+                    onChange={(event) => updateDraft(category, "quantity", normalizeThousandsInput(event.target.value))}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9.]*"
                     placeholder="Sin cambio"
                   />
                   <input
                     value={draft[category].total}
-                    onChange={(event) => updateDraft(category, "total", event.target.value)}
-                    type="number"
-                    min="1"
+                    onChange={(event) => updateDraft(category, "total", normalizeThousandsInput(event.target.value))}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9.]*"
                     placeholder="Sin cambio"
                   />
                 </div>

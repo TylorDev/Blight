@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import type { FabricationTicketView, LeftoverCreditView } from "../../../electron/types";
 import { categoryLabels, formatCurrency, formatDate } from "../../app-data";
 import { EmptyState, Recipe, TicketCosts, TierBadge } from "../../Components";
+import { normalizeThousandsInput, parseThousands } from "../../number-format";
 import { useHistoryStore } from "../../stores/history-store";
 import { useStockStore } from "../../stores/stock-store";
 import { useTicketStore } from "../../stores/ticket-store";
@@ -79,10 +80,10 @@ function CloseTicketDialog({ ticket }: { ticket: FabricationTicketView }) {
     try {
       const result = await closeTicket({
         ticketId: ticket.id,
-        filledDiariesQuantity: Number(filledDiariesQuantity),
-        filledDiariesDiscount: Number(filledDiariesDiscount),
-        leftoverTablesQuantity: Number(leftoverTablesQuantity),
-        leftoverClothsQuantity: Number(leftoverClothsQuantity)
+        filledDiariesQuantity: parseThousands(filledDiariesQuantity),
+        filledDiariesDiscount: parseThousands(filledDiariesDiscount),
+        leftoverTablesQuantity: parseThousands(leftoverTablesQuantity),
+        leftoverClothsQuantity: parseThousands(leftoverClothsQuantity)
       });
 
       if (!result.ok) {
@@ -139,38 +140,40 @@ function CloseTicketDialog({ ticket }: { ticket: FabricationTicketView }) {
               Cantidad de diarios llenos
               <input
                 value={filledDiariesQuantity}
-                onChange={(event) => setFilledDiariesQuantity(event.target.value)}
-                type="number"
-                min="0"
+                onChange={(event) => setFilledDiariesQuantity(normalizeThousandsInput(event.target.value))}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9.]*"
               />
             </label>
             <label className="field">
               Descuento por diarios llenos
               <input
                 value={filledDiariesDiscount}
-                onChange={(event) => setFilledDiariesDiscount(event.target.value)}
-                type="number"
-                min="0"
+                onChange={(event) => setFilledDiariesDiscount(normalizeThousandsInput(event.target.value))}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9.]*"
               />
             </label>
             <label className="field">
               Cantidad de Tablas Sobrantes
               <input
                 value={leftoverTablesQuantity}
-                onChange={(event) => setLeftoverTablesQuantity(event.target.value)}
-                type="number"
-                min="0"
-                max="73"
+                onChange={(event) => setLeftoverTablesQuantity(normalizeThousandsInput(event.target.value))}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9.]*"
               />
             </label>
             <label className="field">
               Cantidad de Telas Sobrantes
               <input
                 value={leftoverClothsQuantity}
-                onChange={(event) => setLeftoverClothsQuantity(event.target.value)}
-                type="number"
-                min="0"
-                max="44"
+                onChange={(event) => setLeftoverClothsQuantity(normalizeThousandsInput(event.target.value))}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9.]*"
               />
             </label>
             {error ? <p className="form-error">{error}</p> : null}
