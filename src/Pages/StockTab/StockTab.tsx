@@ -9,7 +9,7 @@ import {
   tierLabels,
   tiers
 } from "../../app-data";
-import { SelectField, TierBadge } from "../../Components";
+import { EmptyState, SelectField, TierBadge } from "../../Components";
 import { useStockStore } from "../../stores/stock-store";
 import "./StockTab.scss";
 
@@ -23,7 +23,7 @@ export function StockTab() {
     return stock.filter((item) => {
       const categoryMatches = categoryFilter === "TODOS" || item.category === categoryFilter;
       const tierMatches = tierFilter === "TODOS" || item.tier === tierFilter;
-      return categoryMatches && tierMatches;
+      return item.quantity > 0 && categoryMatches && tierMatches;
     });
   }, [categoryFilter, stock, tierFilter]);
 
@@ -49,7 +49,7 @@ export function StockTab() {
           />
         </div>
       </div>
-      <StockTable items={filteredStock} />
+      {filteredStock.length > 0 ? <StockTable items={filteredStock} /> : <EmptyState text="No hay stock disponible." />}
     </>
   );
 }
