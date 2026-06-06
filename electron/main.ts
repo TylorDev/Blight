@@ -7,6 +7,7 @@ import {
   createBulkPurchase,
   createPurchase,
   createTicket,
+  deleteOpenTicket,
   disconnectPrisma,
   initializeDatabase,
   listHistory,
@@ -79,6 +80,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("purchase:create", (_event, input: CreatePurchaseInput) => createPurchase(input));
   ipcMain.handle("purchase:createBulk", (_event, input: CreateBulkPurchaseInput) => createBulkPurchase(input));
   ipcMain.handle("ticket:create", (_event, input: CreateTicketInput) => createTicket(input));
+  ipcMain.handle("ticket:deleteOpen", (_event, ticketId: string) => deleteOpenTicket(ticketId));
   ipcMain.handle("ticket:list", () => listTickets());
   ipcMain.handle("ticket:listOpen", () => listOpenTickets());
   ipcMain.handle("history:list", () => listHistory());

@@ -2,8 +2,18 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { Factory, Loader2, Plus, X } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { AppTier, LeftoverCreditView } from "../../electron/types";
-import { calculateTicketPreview, categoryLabels, formatCurrency, staffQuantity, tierLabels, tiers } from "../app-data";
-import { normalizeThousandsInput, parseThousands } from "../number-format";
+import {
+  calculateTicketPreview,
+  categoryLabels,
+  formatCurrency,
+  formatNumber,
+  getDefaultTicketTax,
+  staffQuantity,
+  tierLabels,
+  tiers
+} from "../app-data";
+import { formatThousands, normalizeThousandsInput, parseThousands } from "../number-format";
+import { useHistoryStore } from "../stores/history-store";
 import { useStockStore } from "../stores/stock-store";
 import { useTicketStore } from "../stores/ticket-store";
 import { Recipe } from "./Recipe";
@@ -13,17 +23,20 @@ import { TicketPreview } from "./TicketPreview";
 export function TicketDialog() {
   const [open, setOpen] = useState(false);
   const [tier, setTier] = useState<AppTier>("T5");
-  const [tax, setTax] = useState("1");
+  const [tax, setTax] = useState("");
   const [pendingLeftovers, setPendingLeftovers] = useState<LeftoverCreditView[]>([]);
   const [saving, setSaving] = useState(false);
   const [loadingLeftovers, setLoadingLeftovers] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const stock = useStockStore((state) => state.stock);
+  const closedTickets = useHistoryStore((state) => state.tickets);
   const createTicket = useTicketStore((state) => state.createTicket);
   const listPendingLeftoverCredits = useTicketStore((state) => state.listPendingLeftoverCredits);
+  const defaultTax = useMemo(() => getDefaultTicketTax(closedTickets), [closedTickets]);
+  const effectiveTax = tax === "" ? defaultTax : parseThousands(tax);
   const preview = useMemo(
-    () => calculateTicketPreview(stock, tier, parseThousands(tax), pendingLeftovers),
-    [pendingLeftovers, stock, tax, tier]
+    () => calculateTicketPreview(stock, tier, effectiveTax, pendingLeftovers),
+    [effectiveTax, pendingLeftovers, stock, tier]
   );
   const pendingLeftoverTotal = pendingLeftovers.reduce((total, credit) => total + credit.value, 0);
 
@@ -46,8 +59,8 @@ export function TicketDialog() {
     setSaving(true);
     setError(null);
     try {
-      await createTicket({ tier, tax: parseThousands(tax) });
-      setTax("1");
+      await createTicket({ tier, tax: effectiveTax });
+      setTax("");
       setOpen(false);
     } catch (currentError) {
       setError(currentError instanceof Error ? currentError.message : "No se pudo guardar.");
@@ -87,6 +100,8 @@ export function TicketDialog() {
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9.]*"
+                placeholder={formatThousands(String(defaultTax))}
+                aria-label={`Tax, por defecto ${formatNumber(defaultTax)}`}
               />
             </label>
             <label className="field">

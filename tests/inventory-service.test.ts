@@ -223,6 +223,51 @@ describe("tickets", () => {
     expect(new Date(ticket.openedAt).toString()).not.toBe("Invalid Date");
   });
 
+  it("deletes an open ticket without mutating stock or history", async () => {
+    await seedRecipeStock(Tier.T5, 100, 1000);
+    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const stockBeforeDelete = await service.listStock();
+
+    await service.deleteOpenTicket(ticket.id);
+
+    const openTickets = await service.listOpenTickets();
+    const history = await service.listHistory();
+    const stockAfterDelete = await service.listStock();
+
+    expect(openTickets).toEqual([]);
+    expect(history).toEqual([]);
+    expect(stockAfterDelete).toEqual(stockBeforeDelete);
+  });
+
+  it("rejects deleting a closed ticket", async () => {
+    await seedRecipeStock(Tier.T5, 100, 1000);
+    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    await service.closeTicket(closeInput(ticket.id));
+
+    await expect(service.deleteOpenTicket(ticket.id)).rejects.toThrow("cerrado");
+    await expect(service.listHistory()).resolves.toHaveLength(1);
+  });
+
+  it("deletes leftovers applied to an open ticket", async () => {
+    await seedRecipeStock(Tier.T5, 220, 1000);
+    const sourceTicket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    await service.closeTicket(
+      closeInput(sourceTicket.id, {
+        leftoverTablesQuantity: 12,
+        leftoverClothsQuantity: 7
+      })
+    );
+    const openTicket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+
+    expect(openTicket.appliedLeftoverCredits).toHaveLength(2);
+
+    await service.deleteOpenTicket(openTicket.id);
+
+    expect(await prisma.ticketLeftoverCredit.count({ where: { appliedToTicketId: openTicket.id } })).toBe(0);
+    expect(await prisma.ticketLeftoverCredit.count()).toBe(0);
+    expect(await service.listHistory()).toHaveLength(1);
+  });
+
   it("blocks close when stock is missing and does not mutate stock", async () => {
     const ticket = await service.createTicket({ tier: Tier.T6, tax: 100 });
     const result = await service.closeTicket(closeInput(ticket.id));
@@ -360,7 +405,7 @@ describe("tickets", () => {
     );
     expect(appliedCredits).toHaveLength(2);
     expect(thirdClose.ok).toBe(true);
-    expect(thirdClose.ticket?.appliedLeftoverDiscount).toBe(0);
+    expect(thirdClose.ticket?.appliedLeftoverDiscount).toBe(2000);
   });
 
   it("uses effective leftover-adjusted quantities when checking missing stock", async () => {
@@ -398,7 +443,7 @@ describe("tickets", () => {
 
     expect(secondClose.ok).toBe(true);
     expect(secondClose.ticket?.appliedLeftoverDiscount).toBe(0);
-    expect(await prisma.ticketLeftoverCredit.count({ where: { tier: Tier.T5, appliedToTicketId: null } })).toBe(1);
+    expect(await prisma.ticketLeftoverCredit.count({ where: { tier: Tier.T5, appliedToTicketId: null } })).toBe(2);
   });
 
   it("rejects invalid close form values", async () => {
@@ -407,6 +452,12 @@ describe("tickets", () => {
 
     await expect(service.closeTicket(closeInput(ticket.id, { filledDiariesQuantity: -1 }))).rejects.toThrow("cierre");
     await expect(service.closeTicket(closeInput(ticket.id, { filledDiariesDiscount: -1 }))).rejects.toThrow("cierre");
+    await expect(service.closeTicket(closeInput(ticket.id, { leftoverTablesQuantity: 0 }))).rejects.toThrow(
+      "Sobrantes"
+    );
+    await expect(service.closeTicket(closeInput(ticket.id, { leftoverClothsQuantity: 0 }))).rejects.toThrow(
+      "Sobrantes"
+    );
     await expect(service.closeTicket(closeInput(ticket.id, { leftoverTablesQuantity: 74 }))).rejects.toThrow("sobras");
     await expect(service.closeTicket(closeInput(ticket.id, { leftoverClothsQuantity: 45 }))).rejects.toThrow("sobras");
   });
@@ -525,8 +576,8 @@ function closeInput(ticketId: string, overrides: Partial<CloseTicketInput> = {})
     ticketId,
     filledDiariesQuantity: 0,
     filledDiariesDiscount: 0,
-    leftoverTablesQuantity: 0,
-    leftoverClothsQuantity: 0,
+    leftoverTablesQuantity: 1,
+    leftoverClothsQuantity: 1,
     ...overrides
   };
 }

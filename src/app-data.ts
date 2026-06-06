@@ -1,4 +1,4 @@
-import type { AppTier, Category, LeftoverCreditView, StockItemView } from "../electron/types";
+import type { AppTier, Category, FabricationTicketView, LeftoverCreditView, StockItemView } from "../electron/types";
 
 export const categories: Category[] = ["TABLAS", "TELAS", "DIARIOS_VACIOS", "ARTEFACTOS"];
 export const tiers: AppTier[] = ["T5", "T6", "T7", "T8"];
@@ -103,6 +103,48 @@ export function calculateTicketPreview(
     investmentTotal,
     unitCost: investmentTotal / staffQuantity
   };
+}
+
+export function getDefaultTicketTax(tickets: FabricationTicketView[]) {
+  return getLatestClosedTicket(tickets)?.tax ?? 1;
+}
+
+export function getDefaultFilledDiariesQuantity(tier: AppTier) {
+  return recipeDiary[tier];
+}
+
+export function getDefaultFilledDiariesDiscount(tickets: FabricationTicketView[], tier: AppTier) {
+  return getLatestClosedTicket(tickets, tier)?.filledDiariesDiscount ?? 0;
+}
+
+export function getRecentLeftoverQuantitySuggestions(
+  tickets: FabricationTicketView[],
+  tier: AppTier,
+  category: Extract<Category, "TABLAS" | "TELAS">
+) {
+  const seen = new Set<number>();
+  return getClosedTicketsByRecentDate(tickets)
+    .filter((ticket) => ticket.tier === tier)
+    .map((ticket) => (category === "TABLAS" ? ticket.leftoverTablesQuantity : ticket.leftoverClothsQuantity))
+    .filter((quantity) => {
+      if (quantity < 1 || seen.has(quantity)) {
+        return false;
+      }
+
+      seen.add(quantity);
+      return true;
+    });
+}
+
+function getLatestClosedTicket(tickets: FabricationTicketView[], tier?: AppTier) {
+  return getClosedTicketsByRecentDate(tickets).find((ticket) => !tier || ticket.tier === tier);
+}
+
+function getClosedTicketsByRecentDate(tickets: FabricationTicketView[]) {
+  return tickets
+    .filter((ticket) => ticket.status === "CERRADO" && ticket.closedAt)
+    .slice()
+    .sort((first, second) => new Date(second.closedAt ?? 0).getTime() - new Date(first.closedAt ?? 0).getTime());
 }
 
 export function formatCurrency(value: number) {

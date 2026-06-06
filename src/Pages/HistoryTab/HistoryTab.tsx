@@ -88,12 +88,48 @@ function HistoryTable({ tickets }: { tickets: FabricationTicketView[] }) {
 
   return (
     <div className="history-list">
-      {tickets.map((ticket) => (
-        <article className="history-item" key={ticket.id}>
+      {tickets.map((ticket) => <HistoryTicketDialog key={ticket.id} ticket={ticket} />)}
+    </div>
+  );
+}
+
+function HistoryTicketDialog({ ticket }: { ticket: FabricationTicketView }) {
+  const closedDate = ticket.closedAt ? formatDate(ticket.closedAt) : "";
+
+  return (
+    <Dialog.Root>
+      <Dialog.Trigger asChild>
+        <button className="history-item" type="button">
           <div className="history-title">
             <TierBadge tier={ticket.tier} />
-            <span>{ticket.closedAt ? formatDate(ticket.closedAt) : ""}</span>
+            <span>Ver detalles</span>
           </div>
+          <div className="history-summary">
+            <span>
+              <strong>Fecha:</strong>
+              {closedDate}
+            </span>
+            <span>
+              <strong>Inversion total despues de descuentos:</strong>
+              {formatCurrency(ticket.investmentTotal)}
+            </span>
+            <span>
+              <strong>Precio Baston:</strong>
+              {formatCurrency(ticket.unitCost)}
+            </span>
+          </div>
+        </button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="overlay" />
+        <Dialog.Content className="modal history-modal">
+          <div className="history-modal__head">
+            <Dialog.Title>Ticket {ticket.tier}</Dialog.Title>
+            <span>{closedDate}</span>
+          </div>
+          <Dialog.Description className="sr-only">
+            Detalle completo del ticket cerrado, incluyendo costos y consumos.
+          </Dialog.Description>
           <TicketCosts ticket={ticket} />
           <div className="consumption-list">
             {ticket.consumptions.map((item) => (
@@ -102,8 +138,13 @@ function HistoryTable({ tickets }: { tickets: FabricationTicketView[] }) {
               </span>
             ))}
           </div>
-        </article>
-      ))}
-    </div>
+          <Dialog.Close asChild>
+            <button className="icon-close" aria-label="Cerrar">
+              <X />
+            </button>
+          </Dialog.Close>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

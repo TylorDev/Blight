@@ -1,8 +1,16 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { Check, Loader2, X } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { Check, Loader2, Trash2, X } from "lucide-react";
+import { FormEvent, useMemo, useState } from "react";
 import type { FabricationTicketView } from "../../../electron/types";
-import { categoryLabels, formatCurrency, formatDate } from "../../app-data";
+import {
+  categoryLabels,
+  formatCurrency,
+  formatDate,
+  formatNumber,
+  getDefaultFilledDiariesDiscount,
+  getDefaultFilledDiariesQuantity,
+  getRecentLeftoverQuantitySuggestions
+} from "../../app-data";
 import { EmptyState, Recipe, TicketCosts, TierBadge } from "../../Components";
 import { normalizeThousandsInput, parseThousands } from "../../number-format";
 import { useHistoryStore } from "../../stores/history-store";
@@ -31,7 +39,10 @@ export function TicketTab() {
             </div>
             <TicketCosts ticket={ticket} compact />
             <Recipe tier={ticket.tier} leftoverCredits={ticket.appliedLeftoverCredits} />
-            <CloseTicketDialog ticket={ticket} />
+            <div className="ticket-card__actions">
+              <CloseTicketDialog ticket={ticket} />
+              <DeleteOpenTicketDialog ticket={ticket} />
+            </div>
           </article>
         ))}
       </div>
@@ -39,34 +50,117 @@ export function TicketTab() {
   );
 }
 
+function DeleteOpenTicketDialog({ ticket }: { ticket: FabricationTicketView }) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const deleteOpenTicket = useTicketStore((state) => state.deleteOpenTicket);
+
+  const remove = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await deleteOpenTicket(ticket.id);
+      setOpen(false);
+    } catch (currentError) {
+      setError(currentError instanceof Error ? currentError.message : "No se pudo eliminar el ticket.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger asChild>
+        <button className="button danger" type="button">
+          <Trash2 />
+          Eliminar
+        </button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="overlay" />
+        <Dialog.Content className="modal">
+          <Dialog.Title>Eliminar ticket {ticket.tier}</Dialog.Title>
+          <Dialog.Description className="modal-copy">
+            Elimina este ticket abierto y sus sobras aplicadas. No modifica stock ni historial.
+          </Dialog.Description>
+          {error ? <p className="form-error">{error}</p> : null}
+          <div className="modal-actions">
+            <Dialog.Close asChild>
+              <button className="button ghost" type="button">
+                Cancelar
+              </button>
+            </Dialog.Close>
+            <button className="button danger solid" type="button" onClick={remove} disabled={saving}>
+              {saving ? <Loader2 className="spin" /> : <Trash2 />}
+              Eliminar
+            </button>
+          </div>
+          <Dialog.Close asChild>
+            <button className="icon-close" aria-label="Cerrar">
+              <X />
+            </button>
+          </Dialog.Close>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
 function CloseTicketDialog({ ticket }: { ticket: FabricationTicketView }) {
   const [open, setOpen] = useState(false);
-  const [filledDiariesQuantity, setFilledDiariesQuantity] = useState("0");
-  const [filledDiariesDiscount, setFilledDiariesDiscount] = useState("0");
-  const [leftoverTablesQuantity, setLeftoverTablesQuantity] = useState("0");
-  const [leftoverClothsQuantity, setLeftoverClothsQuantity] = useState("0");
+  const [filledDiariesQuantity, setFilledDiariesQuantity] = useState("");
+  const [filledDiariesDiscount, setFilledDiariesDiscount] = useState("");
+  const [leftoverTablesQuantity, setLeftoverTablesQuantity] = useState("");
+  const [leftoverClothsQuantity, setLeftoverClothsQuantity] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const closeTicket = useTicketStore((state) => state.closeTicket);
   const clearTicketError = useTicketStore((state) => state.clearError);
   const setMissingMaterials = useTicketStore((state) => state.setMissingMaterials);
   const loadStock = useStockStore((state) => state.loadStock);
+  const closedTickets = useHistoryStore((state) => state.tickets);
   const loadHistory = useHistoryStore((state) => state.loadHistory);
+  const defaultFilledDiariesQuantity = getDefaultFilledDiariesQuantity(ticket.tier);
+  const defaultFilledDiariesDiscount = useMemo(
+    () => getDefaultFilledDiariesDiscount(closedTickets, ticket.tier),
+    [closedTickets, ticket.tier]
+  );
+  const tableSuggestions = useMemo(
+    () => getRecentLeftoverQuantitySuggestions(closedTickets, ticket.tier, "TABLAS"),
+    [closedTickets, ticket.tier]
+  );
+  const clothSuggestions = useMemo(
+    () => getRecentLeftoverQuantitySuggestions(closedTickets, ticket.tier, "TELAS"),
+    [closedTickets, ticket.tier]
+  );
+  const tableSuggestionsId = `leftover-tables-${ticket.id}`;
+  const clothSuggestionsId = `leftover-cloths-${ticket.id}`;
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setSaving(true);
     setError(null);
     clearTicketError();
     setMissingMaterials([]);
 
+    const parsedLeftoverTablesQuantity = parseThousands(leftoverTablesQuantity);
+    const parsedLeftoverClothsQuantity = parseThousands(leftoverClothsQuantity);
+    if (parsedLeftoverTablesQuantity < 1 || parsedLeftoverClothsQuantity < 1) {
+      setError("Cantidad de Tablas Sobrantes y Cantidad de Telas Sobrantes deben ser mayores a cero.");
+      return;
+    }
+
+    setSaving(true);
+
     try {
       const result = await closeTicket({
         ticketId: ticket.id,
-        filledDiariesQuantity: parseThousands(filledDiariesQuantity),
-        filledDiariesDiscount: parseThousands(filledDiariesDiscount),
-        leftoverTablesQuantity: parseThousands(leftoverTablesQuantity),
-        leftoverClothsQuantity: parseThousands(leftoverClothsQuantity)
+        filledDiariesQuantity:
+          filledDiariesQuantity === "" ? defaultFilledDiariesQuantity : parseThousands(filledDiariesQuantity),
+        filledDiariesDiscount:
+          filledDiariesDiscount === "" ? defaultFilledDiariesDiscount : parseThousands(filledDiariesDiscount),
+        leftoverTablesQuantity: parsedLeftoverTablesQuantity,
+        leftoverClothsQuantity: parsedLeftoverClothsQuantity
       });
 
       if (!result.ok) {
@@ -75,10 +169,10 @@ function CloseTicketDialog({ ticket }: { ticket: FabricationTicketView }) {
 
       await Promise.all([loadStock(), loadHistory()]);
       setOpen(false);
-      setFilledDiariesQuantity("0");
-      setFilledDiariesDiscount("0");
-      setLeftoverTablesQuantity("0");
-      setLeftoverClothsQuantity("0");
+      setFilledDiariesQuantity("");
+      setFilledDiariesDiscount("");
+      setLeftoverTablesQuantity("");
+      setLeftoverClothsQuantity("");
     } catch (currentError) {
       const message = currentError instanceof Error ? currentError.message : "No se pudo cerrar el ticket.";
       setError(message);
@@ -111,6 +205,7 @@ function CloseTicketDialog({ ticket }: { ticket: FabricationTicketView }) {
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9.]*"
+                placeholder={formatNumber(defaultFilledDiariesQuantity)}
               />
             </label>
             <label className="field">
@@ -121,6 +216,7 @@ function CloseTicketDialog({ ticket }: { ticket: FabricationTicketView }) {
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9.]*"
+                placeholder={formatNumber(defaultFilledDiariesDiscount)}
               />
             </label>
             <label className="field">
@@ -131,7 +227,13 @@ function CloseTicketDialog({ ticket }: { ticket: FabricationTicketView }) {
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9.]*"
+                list={tableSuggestionsId}
               />
+              <datalist id={tableSuggestionsId}>
+                {tableSuggestions.map((quantity) => (
+                  <option key={quantity} value={formatNumber(quantity)} />
+                ))}
+              </datalist>
             </label>
             <label className="field">
               Cantidad de Telas Sobrantes
@@ -141,7 +243,13 @@ function CloseTicketDialog({ ticket }: { ticket: FabricationTicketView }) {
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9.]*"
+                list={clothSuggestionsId}
               />
+              <datalist id={clothSuggestionsId}>
+                {clothSuggestions.map((quantity) => (
+                  <option key={quantity} value={formatNumber(quantity)} />
+                ))}
+              </datalist>
             </label>
             {error ? <p className="form-error">{error}</p> : null}
             <div className="modal-actions">

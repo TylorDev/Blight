@@ -7,6 +7,7 @@ const api: AppApi = {
   createPurchase: (input: CreatePurchaseInput) => ipcRenderer.invoke("purchase:create", input),
   createBulkPurchase: (input: CreateBulkPurchaseInput) => ipcRenderer.invoke("purchase:createBulk", input),
   createTicket: (input: CreateTicketInput) => ipcRenderer.invoke("ticket:create", input),
+  deleteOpenTicket: (ticketId: string) => ipcRenderer.invoke("ticket:deleteOpen", ticketId),
   listTickets: () => ipcRenderer.invoke("ticket:list"),
   listOpenTickets: () => ipcRenderer.invoke("ticket:listOpen"),
   listHistory: () => ipcRenderer.invoke("history:list"),

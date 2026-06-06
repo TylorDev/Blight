@@ -7,10 +7,29 @@
 .history-item {
   display: grid;
   gap: 12px;
+  width: 100%;
   border: 1px solid #27272a;
   border-radius: 8px;
   padding: 14px;
+  color: inherit;
+  text-align: left;
   background: #111113;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.history-item:hover {
+  border-color: #3f3f46;
+  background: #18181b;
+  transform: translateY(-1px);
+}
+
+.history-item:focus-visible {
+  outline: 2px solid #a1a1aa;
+  outline-offset: 3px;
 }
 
 .history-title {
@@ -21,5 +40,49 @@
   span:last-child {
     color: #a1a1aa;
     font-size: 12px;
+  }
+}
+
+.history-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+
+  span {
+    display: grid;
+    gap: 4px;
+    color: #f4f4f5;
+    font-size: 14px;
+  }
+
+  strong {
+    color: #a1a1aa;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+}
+
+.history-modal {
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
+
+.history-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  span {
+    color: #a1a1aa;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 760px) {
+  .history-summary {
+    grid-template-columns: 1fr;
   }
 }

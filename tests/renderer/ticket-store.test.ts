@@ -41,6 +41,20 @@ describe("ticket-store", () => {
     expect(useTicketStore.getState().tickets).toEqual(tickets);
   });
 
+  it("deletes an open ticket, clears missing materials, and refreshes open tickets", async () => {
+    const remainingTickets = [createTicket({ id: "ticket-2" })];
+    useTicketStore.getState().setMissingMaterials(["Tablas T5 (0/73)"]);
+    blight.deleteOpenTicket.mockResolvedValue(undefined);
+    blight.listOpenTickets.mockResolvedValue(remainingTickets);
+
+    await useTicketStore.getState().deleteOpenTicket("ticket-1");
+
+    expect(blight.deleteOpenTicket).toHaveBeenCalledWith("ticket-1");
+    expect(blight.listOpenTickets).toHaveBeenCalledTimes(1);
+    expect(useTicketStore.getState().missingMaterials).toEqual([]);
+    expect(useTicketStore.getState().tickets).toEqual(remainingTickets);
+  });
+
   it("closes a ticket successfully and refreshes open tickets", async () => {
     const remainingTickets = [createTicket({ id: "ticket-2" })];
     const closedTicket = createTicket({ status: "CERRADO", closedAt: "2026-01-01T01:00:00.000Z" });
@@ -111,5 +125,14 @@ describe("ticket-store", () => {
     ).rejects.toThrow("close failed");
 
     expect(useTicketStore.getState().error).toBe("close failed");
+  });
+
+  it("stores and rethrows delete errors", async () => {
+    const failure = new Error("delete failed");
+    blight.deleteOpenTicket.mockRejectedValue(failure);
+
+    await expect(useTicketStore.getState().deleteOpenTicket("ticket-1")).rejects.toThrow("delete failed");
+
+    expect(useTicketStore.getState().error).toBe("delete failed");
   });
 });

@@ -18,6 +18,7 @@ interface TicketStore {
   clearError: () => void;
   loadTickets: () => Promise<void>;
   createTicket: (input: CreateTicketInput) => Promise<void>;
+  deleteOpenTicket: (ticketId: string) => Promise<void>;
   closeTicket: (input: CloseTicketInput) => Promise<CloseTicketResult>;
   listPendingLeftoverCredits: (tier: AppTier) => ReturnType<typeof window.blight.listPendingLeftoverCredits>;
 }
@@ -49,6 +50,17 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
       await get().loadTickets();
     } catch (currentError) {
       const error = currentError instanceof Error ? currentError.message : "No se pudo crear el ticket.";
+      set({ error });
+      throw currentError;
+    }
+  },
+  deleteOpenTicket: async (ticketId) => {
+    set({ error: null, missingMaterials: [] });
+    try {
+      await window.blight.deleteOpenTicket(ticketId);
+      await get().loadTickets();
+    } catch (currentError) {
+      const error = currentError instanceof Error ? currentError.message : "No se pudo eliminar el ticket.";
       set({ error });
       throw currentError;
     }

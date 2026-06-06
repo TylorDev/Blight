@@ -387,6 +387,26 @@ export function createInventoryService(prisma: PrismaClient) {
     return listHistory();
   }
 
+  async function deleteOpenTicket(ticketId: string): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      const ticket = await tx.fabricationTicket.findUnique({
+        where: { id: ticketId },
+        select: { id: true, status: true }
+      });
+
+      if (!ticket) {
+        throw new Error("Ticket no encontrado.");
+      }
+
+      if (ticket.status === TicketStatus.CERRADO) {
+        throw new Error("No se puede eliminar un ticket cerrado.");
+      }
+
+      await tx.ticketLeftoverCredit.deleteMany({ where: { appliedToTicketId: ticket.id } });
+      await tx.fabricationTicket.delete({ where: { id: ticket.id } });
+    });
+  }
+
   async function listPendingLeftoverCredits(tier: Tier): Promise<LeftoverCreditView[]> {
     const credits = await prisma.ticketLeftoverCredit.findMany({
       where: { tier, appliedToTicketId: null },
@@ -572,6 +592,7 @@ export function createInventoryService(prisma: PrismaClient) {
     listOpenTickets,
     listHistory,
     clearHistory,
+    deleteOpenTicket,
     listPendingLeftoverCredits,
     closeTicket,
     disconnectPrisma
@@ -596,6 +617,7 @@ export const listTickets = () => getDefaultService().listTickets();
 export const listOpenTickets = () => getDefaultService().listOpenTickets();
 export const listHistory = () => getDefaultService().listHistory();
 export const clearHistory = () => getDefaultService().clearHistory();
+export const deleteOpenTicket = (ticketId: string) => getDefaultService().deleteOpenTicket(ticketId);
 export const listPendingLeftoverCredits = (tier: Tier) => getDefaultService().listPendingLeftoverCredits(tier);
 export const closeTicket = (input: CloseTicketInput) => getDefaultService().closeTicket(input);
 export const disconnectPrisma = () => getDefaultService().disconnectPrisma();
@@ -725,6 +747,10 @@ function validateCloseTicketInput(input: CloseTicketInput) {
   ];
   if (values.some((value) => !Number.isFinite(value) || value < 0)) {
     throw new Error("Los valores de cierre deben ser mayores o iguales a cero.");
+  }
+
+  if (input.leftoverTablesQuantity < 1 || input.leftoverClothsQuantity < 1) {
+    throw new Error("Cantidad de Tablas Sobrantes y Cantidad de Telas Sobrantes deben ser mayores a cero.");
   }
 }
 

@@ -102,6 +102,7 @@ export interface AppApi {
   createPurchase: (input: CreatePurchaseInput) => Promise<StockItemView>;
   createBulkPurchase: (input: CreateBulkPurchaseInput) => Promise<StockItemView[]>;
   createTicket: (input: CreateTicketInput) => Promise<FabricationTicketView>;
+  deleteOpenTicket: (ticketId: string) => Promise<void>;
   listTickets: () => Promise<FabricationTicketView[]>;
   listOpenTickets: () => Promise<FabricationTicketView[]>;
   listHistory: () => Promise<FabricationTicketView[]>;

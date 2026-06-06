@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { calculateTicketPreview } from "../../src/app-data";
-import { createLeftoverCredit, createStockItem } from "./mock-blight";
+import {
+  calculateTicketPreview,
+  getDefaultFilledDiariesDiscount,
+  getDefaultFilledDiariesQuantity,
+  getDefaultTicketTax,
+  getRecentLeftoverQuantitySuggestions
+} from "../../src/app-data";
+import { createLeftoverCredit, createStockItem, createTicket } from "./mock-blight";
 
 describe("app-data", () => {
   it("reduces ticket preview materials with pending leftovers", () => {
@@ -21,5 +27,73 @@ describe("app-data", () => {
 
     expect(preview.materials.find((material) => material.category === "TABLAS")?.quantity).toBe(63);
     expect(preview.materials.find((material) => material.category === "TELAS")?.quantity).toBe(37);
+  });
+
+  it("uses the most recent closed ticket tax across tiers", () => {
+    const tickets = [
+      createTicket({ status: "CERRADO", tax: 200, closedAt: "2026-01-01T00:00:00.000Z" }),
+      createTicket({ status: "ABIERTO", tax: 999, closedAt: null, openedAt: "2026-01-03T00:00:00.000Z" }),
+      createTicket({ status: "CERRADO", tier: "T8", tax: 465, closedAt: "2026-01-02T00:00:00.000Z" })
+    ];
+
+    expect(getDefaultTicketTax(tickets)).toBe(465);
+    expect(getDefaultTicketTax([])).toBe(1);
+  });
+
+  it("uses diary and discount defaults for the close form", () => {
+    const tickets = [
+      createTicket({
+        status: "CERRADO",
+        tier: "T5",
+        filledDiariesDiscount: 1500,
+        closedAt: "2026-01-01T00:00:00.000Z"
+      }),
+      createTicket({
+        status: "CERRADO",
+        tier: "T6",
+        filledDiariesDiscount: 3500,
+        closedAt: "2026-01-02T00:00:00.000Z"
+      })
+    ];
+
+    expect(getDefaultFilledDiariesQuantity("T6")).toBe(14);
+    expect(getDefaultFilledDiariesDiscount(tickets, "T6")).toBe(3500);
+    expect(getDefaultFilledDiariesDiscount(tickets, "T7")).toBe(0);
+  });
+
+  it("suggests recent positive leftover quantities once per tier and category", () => {
+    const tickets = [
+      createTicket({
+        status: "CERRADO",
+        tier: "T5",
+        leftoverTablesQuantity: 4,
+        leftoverClothsQuantity: 9,
+        closedAt: "2026-01-03T00:00:00.000Z"
+      }),
+      createTicket({
+        status: "CERRADO",
+        tier: "T5",
+        leftoverTablesQuantity: 4,
+        leftoverClothsQuantity: 5,
+        closedAt: "2026-01-02T00:00:00.000Z"
+      }),
+      createTicket({
+        status: "CERRADO",
+        tier: "T5",
+        leftoverTablesQuantity: 2,
+        leftoverClothsQuantity: 0,
+        closedAt: "2026-01-01T00:00:00.000Z"
+      }),
+      createTicket({
+        status: "CERRADO",
+        tier: "T6",
+        leftoverTablesQuantity: 8,
+        leftoverClothsQuantity: 8,
+        closedAt: "2026-01-04T00:00:00.000Z"
+      })
+    ];
+
+    expect(getRecentLeftoverQuantitySuggestions(tickets, "T5", "TABLAS")).toEqual([4, 2]);
+    expect(getRecentLeftoverQuantitySuggestions(tickets, "T5", "TELAS")).toEqual([9, 5]);
   });
 });
