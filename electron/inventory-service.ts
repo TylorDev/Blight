@@ -1,5 +1,6 @@
-import { PrismaClient, StockCategory, TicketStatus, Tier } from "@prisma/client";
+import { PrismaClient, StaffMovementType, StaffQuality, StockCategory, TicketStatus, Tier } from "@prisma/client";
 import type {
+  AdjustStaffStockInput,
   CloseTicketInput,
   CloseTicketResult,
   CreateBulkPurchaseInput,
@@ -7,6 +8,9 @@ import type {
   CreateTicketInput,
   FabricationTicketView,
   LeftoverCreditView,
+  SellStaffStockInput,
+  StaffStockItemView,
+  StaffStockMovementView,
   StockItemView
 } from "./types";
 
@@ -17,6 +21,13 @@ const categories = [
   StockCategory.ARTEFACTOS
 ];
 const tiers = [Tier.T5, Tier.T6, Tier.T7, Tier.T8];
+const staffQualities = [
+  StaffQuality.NORMAL,
+  StaffQuality.BUENA,
+  StaffQuality.NOTABLE,
+  StaffQuality.SOBRESALIENTE,
+  StaffQuality.OBRA_MAESTRA
+];
 const staffQuantity = 6;
 const craftingTaxBase = 10.08;
 const craftingTaxMultipliers: Record<Tier, number> = {
@@ -163,11 +174,71 @@ export function createInventoryService(prisma: PrismaClient) {
   `);
 
     await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "StaffStockItem" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "tier" TEXT NOT NULL,
+      "quality" TEXT NOT NULL,
+      "quantity" INTEGER NOT NULL DEFAULT 0,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL
+    );
+  `);
+
+    await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "StaffStockMovement" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "type" TEXT NOT NULL,
+      "tier" TEXT NOT NULL,
+      "quality" TEXT NOT NULL,
+      "quantity" INTEGER NOT NULL,
+      "total" REAL NOT NULL DEFAULT 0,
+      "reason" TEXT,
+      "ticketId" TEXT,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "StaffStockMovement_ticketId_fkey"
+        FOREIGN KEY ("ticketId") REFERENCES "FabricationTicket" ("id")
+        ON DELETE SET NULL ON UPDATE CASCADE
+    );
+  `);
+
+    await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "TicketProducedStaff" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "ticketId" TEXT,
+      "tier" TEXT NOT NULL,
+      "quality" TEXT NOT NULL,
+      "quantity" INTEGER NOT NULL,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "TicketProducedStaff_ticketId_fkey"
+        FOREIGN KEY ("ticketId") REFERENCES "FabricationTicket" ("id")
+        ON DELETE SET NULL ON UPDATE CASCADE
+    );
+  `);
+
+    await prisma.$executeRawUnsafe(`
     CREATE UNIQUE INDEX IF NOT EXISTS "StockItem_category_tier_key"
     ON "StockItem"("category", "tier");
   `);
 
+    await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "StaffStockItem_tier_quality_key"
+    ON "StaffStockItem"("tier", "quality");
+  `);
+
     await ensureStockItems();
+    await ensureStaffStockItems();
+  }
+
+  async function ensureStaffStockItems() {
+    for (const tier of tiers) {
+      for (const quality of staffQualities) {
+        await prisma.staffStockItem.upsert({
+          where: { tier_quality: { tier, quality } },
+          update: {},
+          create: { tier, quality }
+        });
+      }
+    }
   }
 
   async function listStock(): Promise<StockItemView[]> {
@@ -204,6 +275,92 @@ export function createInventoryService(prisma: PrismaClient) {
     });
 
     return items.map(toStockView);
+  }
+
+  async function listStaffStock(): Promise<StaffStockItemView[]> {
+    await ensureStaffStockItems();
+    const items = await prisma.staffStockItem.findMany({
+      orderBy: [{ tier: "asc" }, { quality: "asc" }]
+    });
+    return items.map(toStaffStockView);
+  }
+
+  async function listStaffMovements(): Promise<StaffStockMovementView[]> {
+    const movements = await prisma.staffStockMovement.findMany({
+      orderBy: { createdAt: "desc" }
+    });
+    return movements.map(toStaffStockMovementView);
+  }
+
+  async function adjustStaffStock(input: AdjustStaffStockInput): Promise<StaffStockItemView> {
+    validateStaffStockAdjustment(input);
+    const item = await prisma.$transaction(async (tx) => {
+      const current = await tx.staffStockItem.upsert({
+        where: { tier_quality: { tier: input.tier, quality: input.quality } },
+        update: {},
+        create: { tier: input.tier, quality: input.quality }
+      });
+      const quantityChange = Math.trunc(input.quantity);
+      const nextQuantity = current.quantity + quantityChange;
+      if (nextQuantity < 0) {
+        throw new Error("El ajuste no puede dejar stock negativo.");
+      }
+
+      const updated = await tx.staffStockItem.update({
+        where: { id: current.id },
+        data: { quantity: nextQuantity }
+      });
+
+      await tx.staffStockMovement.create({
+        data: {
+          type: StaffMovementType.AJUSTE,
+          tier: input.tier,
+          quality: input.quality,
+          quantity: quantityChange,
+          total: 0,
+          reason: input.reason.trim()
+        }
+      });
+
+      return updated;
+    });
+
+    return toStaffStockView(item);
+  }
+
+  async function sellStaffStock(input: SellStaffStockInput): Promise<StaffStockItemView> {
+    validateStaffSale(input);
+    const item = await prisma.$transaction(async (tx) => {
+      const current = await tx.staffStockItem.upsert({
+        where: { tier_quality: { tier: input.tier, quality: input.quality } },
+        update: {},
+        create: { tier: input.tier, quality: input.quality }
+      });
+      const soldQuantity = Math.trunc(input.quantity);
+      if (current.quantity < soldQuantity) {
+        throw new Error("No hay bastones suficientes para vender.");
+      }
+
+      const updated = await tx.staffStockItem.update({
+        where: { id: current.id },
+        data: { quantity: current.quantity - soldQuantity }
+      });
+
+      await tx.staffStockMovement.create({
+        data: {
+          type: StaffMovementType.VENTA,
+          tier: input.tier,
+          quality: input.quality,
+          quantity: soldQuantity,
+          total: input.total,
+          reason: "Venta"
+        }
+      });
+
+      return updated;
+    });
+
+    return toStaffStockView(item);
   }
 
   async function createPurchase(input: CreatePurchaseInput): Promise<StockItemView> {
@@ -309,7 +466,7 @@ export function createInventoryService(prisma: PrismaClient) {
           craftingTax: calculateCraftingTax(input.tier, input.tax),
           appliedLeftoverDiscount
         },
-        include: { consumptions: true, appliedLeftoverCredits: true }
+        include: { consumptions: true, appliedLeftoverCredits: true, producedStaffs: true }
       });
 
       if (pendingLeftoverCredits.length > 0) {
@@ -324,7 +481,7 @@ export function createInventoryService(prisma: PrismaClient) {
 
       return tx.fabricationTicket.findUniqueOrThrow({
         where: { id: createdTicket.id },
-        include: { consumptions: true, appliedLeftoverCredits: true }
+        include: { consumptions: true, appliedLeftoverCredits: true, producedStaffs: true }
       });
     });
 
@@ -333,7 +490,7 @@ export function createInventoryService(prisma: PrismaClient) {
 
   async function listTickets(): Promise<FabricationTicketView[]> {
     const tickets = await prisma.fabricationTicket.findMany({
-      include: { consumptions: true, appliedLeftoverCredits: true },
+      include: { consumptions: true, appliedLeftoverCredits: true, producedStaffs: true },
       orderBy: [{ status: "asc" }, { openedAt: "desc" }]
     });
     return tickets.map(toTicketView);
@@ -342,7 +499,7 @@ export function createInventoryService(prisma: PrismaClient) {
   async function listOpenTickets(): Promise<FabricationTicketView[]> {
     const tickets = await prisma.fabricationTicket.findMany({
       where: { status: TicketStatus.ABIERTO },
-      include: { consumptions: true, appliedLeftoverCredits: true },
+      include: { consumptions: true, appliedLeftoverCredits: true, producedStaffs: true },
       orderBy: { openedAt: "desc" }
     });
     return tickets.map(toTicketView);
@@ -351,7 +508,7 @@ export function createInventoryService(prisma: PrismaClient) {
   async function listHistory(): Promise<FabricationTicketView[]> {
     const tickets = await prisma.fabricationTicket.findMany({
       where: { status: TicketStatus.CERRADO },
-      include: { consumptions: true, appliedLeftoverCredits: true },
+      include: { consumptions: true, appliedLeftoverCredits: true, producedStaffs: true },
       orderBy: { closedAt: "desc" }
     });
     return tickets.map(toTicketView);
@@ -380,6 +537,14 @@ export function createInventoryService(prisma: PrismaClient) {
           type: "CONSUMO",
           ticketId: { in: ticketIds }
         }
+      });
+      await tx.staffStockMovement.updateMany({
+        where: { ticketId: { in: ticketIds } },
+        data: { ticketId: null }
+      });
+      await tx.ticketProducedStaff.updateMany({
+        where: { ticketId: { in: ticketIds } },
+        data: { ticketId: null }
       });
       await tx.fabricationTicket.deleteMany({ where: { id: { in: ticketIds } } });
     });
@@ -421,7 +586,7 @@ export function createInventoryService(prisma: PrismaClient) {
     const result = await prisma.$transaction(async (tx) => {
       const ticket = await tx.fabricationTicket.findUnique({
         where: { id: input.ticketId },
-        include: { consumptions: true, appliedLeftoverCredits: true }
+        include: { consumptions: true, appliedLeftoverCredits: true, producedStaffs: true }
       });
 
       if (!ticket) {
@@ -432,6 +597,7 @@ export function createInventoryService(prisma: PrismaClient) {
         return { ok: true, ticket: toTicketView(ticket) };
       }
 
+      const producedStaffs = normalizeProducedStaffInput(input.producedStaffs, ticket.staffQuantity);
       const materials = getEffectiveRecipe(ticket.tier, ticket.appliedLeftoverCredits);
       const tablesRequired = getRequiredQuantity(ticket.tier, StockCategory.TABLAS);
       const clothsRequired = getRequiredQuantity(ticket.tier, StockCategory.TELAS);
@@ -551,6 +717,44 @@ export function createInventoryService(prisma: PrismaClient) {
         });
       }
 
+      for (const producedStaff of producedStaffs) {
+        if (producedStaff.quantity === 0) {
+          continue;
+        }
+
+        const currentStaffStock = await tx.staffStockItem.upsert({
+          where: { tier_quality: { tier: ticket.tier, quality: producedStaff.quality } },
+          update: {},
+          create: { tier: ticket.tier, quality: producedStaff.quality }
+        });
+
+        await tx.staffStockItem.update({
+          where: { id: currentStaffStock.id },
+          data: { quantity: currentStaffStock.quantity + producedStaff.quantity }
+        });
+
+        await tx.ticketProducedStaff.create({
+          data: {
+            ticketId: ticket.id,
+            tier: ticket.tier,
+            quality: producedStaff.quality,
+            quantity: producedStaff.quantity
+          }
+        });
+
+        await tx.staffStockMovement.create({
+          data: {
+            type: StaffMovementType.PRODUCCION,
+            tier: ticket.tier,
+            quality: producedStaff.quality,
+            quantity: producedStaff.quantity,
+            total: 0,
+            reason: "Produccion de ticket",
+            ticketId: ticket.id
+          }
+        });
+      }
+
       const closedTicket = await tx.fabricationTicket.update({
         where: { id: ticket.id },
         data: {
@@ -567,7 +771,7 @@ export function createInventoryService(prisma: PrismaClient) {
           investmentTotal,
           unitCost
         },
-        include: { consumptions: true, appliedLeftoverCredits: true }
+        include: { consumptions: true, appliedLeftoverCredits: true, producedStaffs: true }
       });
 
       return { ok: true, ticket: toTicketView(closedTicket) };
@@ -585,6 +789,10 @@ export function createInventoryService(prisma: PrismaClient) {
     initializeDatabase,
     listStock,
     clearStock,
+    listStaffStock,
+    listStaffMovements,
+    adjustStaffStock,
+    sellStaffStock,
     createPurchase,
     createBulkPurchase,
     createTicket,
@@ -610,6 +818,10 @@ export const ensureStockItems = () => getDefaultService().ensureStockItems();
 export const initializeDatabase = () => getDefaultService().initializeDatabase();
 export const listStock = () => getDefaultService().listStock();
 export const clearStock = () => getDefaultService().clearStock();
+export const listStaffStock = () => getDefaultService().listStaffStock();
+export const listStaffMovements = () => getDefaultService().listStaffMovements();
+export const adjustStaffStock = (input: AdjustStaffStockInput) => getDefaultService().adjustStaffStock(input);
+export const sellStaffStock = (input: SellStaffStockInput) => getDefaultService().sellStaffStock(input);
 export const createPurchase = (input: CreatePurchaseInput) => getDefaultService().createPurchase(input);
 export const createBulkPurchase = (input: CreateBulkPurchaseInput) => getDefaultService().createBulkPurchase(input);
 export const createTicket = (input: CreateTicketInput) => getDefaultService().createTicket(input);
@@ -637,6 +849,44 @@ function toStockView(item: {
     quantity: item.quantity,
     total: item.total,
     averageCost: item.averageCost
+  };
+}
+
+function toStaffStockView(item: {
+  id: string;
+  tier: Tier;
+  quality: StaffQuality;
+  quantity: number;
+}): StaffStockItemView {
+  return {
+    id: item.id,
+    tier: item.tier,
+    quality: item.quality,
+    quantity: item.quantity
+  };
+}
+
+function toStaffStockMovementView(movement: {
+  id: string;
+  type: StaffMovementType;
+  tier: Tier;
+  quality: StaffQuality;
+  quantity: number;
+  total: number;
+  reason: string | null;
+  ticketId: string | null;
+  createdAt: Date;
+}): StaffStockMovementView {
+  return {
+    id: movement.id,
+    type: movement.type,
+    tier: movement.tier,
+    quality: movement.quality,
+    quantity: movement.quantity,
+    total: movement.total,
+    reason: movement.reason,
+    ticketId: movement.ticketId,
+    createdAt: movement.createdAt.toISOString()
   };
 }
 
@@ -678,6 +928,14 @@ function toTicketView(ticket: {
     createdAt: Date;
     appliedAt: Date | null;
   }>;
+  producedStaffs: Array<{
+    id: string;
+    ticketId: string | null;
+    tier: Tier;
+    quality: StaffQuality;
+    quantity: number;
+    createdAt: Date;
+  }>;
 }): FabricationTicketView {
   return {
     id: ticket.id,
@@ -706,7 +964,15 @@ function toTicketView(ticket: {
       discountedTotal: consumption.discountedTotal,
       averageCostUsed: consumption.averageCostUsed
     })),
-    appliedLeftoverCredits: ticket.appliedLeftoverCredits.map(toLeftoverCreditView)
+    appliedLeftoverCredits: ticket.appliedLeftoverCredits.map(toLeftoverCreditView),
+    producedStaffs: ticket.producedStaffs.map((staff) => ({
+      id: staff.id,
+      ticketId: staff.ticketId,
+      tier: staff.tier,
+      quality: staff.quality,
+      quantity: staff.quantity,
+      createdAt: staff.createdAt.toISOString()
+    }))
   };
 }
 
@@ -751,6 +1017,67 @@ function validateCloseTicketInput(input: CloseTicketInput) {
 
   if (input.leftoverTablesQuantity < 1 || input.leftoverClothsQuantity < 1) {
     throw new Error("Cantidad de Tablas Sobrantes y Cantidad de Telas Sobrantes deben ser mayores a cero.");
+  }
+}
+
+function normalizeProducedStaffInput(
+  producedStaffs: CloseTicketInput["producedStaffs"],
+  expectedTotal: number
+) {
+  if (!Array.isArray(producedStaffs)) {
+    throw new Error("Debes registrar los bastones creados.");
+  }
+
+  const quantitiesByQuality = new Map<StaffQuality, number>(staffQualities.map((quality) => [quality, 0]));
+  for (const staff of producedStaffs) {
+    if (!staffQualities.includes(staff.quality)) {
+      throw new Error("Calidad de baston invalida.");
+    }
+
+    if (!Number.isFinite(staff.quantity) || staff.quantity < 0) {
+      throw new Error("Las cantidades de bastones deben ser mayores o iguales a cero.");
+    }
+
+    quantitiesByQuality.set(staff.quality, (quantitiesByQuality.get(staff.quality) ?? 0) + Math.trunc(staff.quantity));
+  }
+
+  const normalized = staffQualities.map((quality) => ({
+    quality,
+    quantity: quantitiesByQuality.get(quality) ?? 0
+  }));
+  const total = normalized.reduce((sum, staff) => sum + staff.quantity, 0);
+  if (total !== expectedTotal) {
+    throw new Error(`La suma de bastones creados debe ser ${expectedTotal}.`);
+  }
+
+  return normalized;
+}
+
+function validateStaffStockAdjustment(input: AdjustStaffStockInput) {
+  if (!tiers.includes(input.tier) || !staffQualities.includes(input.quality)) {
+    throw new Error("Tier o calidad invalida.");
+  }
+
+  if (!Number.isFinite(input.quantity) || Math.trunc(input.quantity) === 0) {
+    throw new Error("La cantidad del ajuste no puede ser cero.");
+  }
+
+  if (input.reason.trim() === "") {
+    throw new Error("El motivo del ajuste es obligatorio.");
+  }
+}
+
+function validateStaffSale(input: SellStaffStockInput) {
+  if (!tiers.includes(input.tier) || !staffQualities.includes(input.quality)) {
+    throw new Error("Tier o calidad invalida.");
+  }
+
+  if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
+    throw new Error("La cantidad vendida debe ser mayor a cero.");
+  }
+
+  if (!Number.isFinite(input.total) || input.total < 0) {
+    throw new Error("El total de venta debe ser mayor o igual a cero.");
   }
 }
 

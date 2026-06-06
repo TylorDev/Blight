@@ -1,5 +1,14 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AppApi, AppTier, CloseTicketInput, CreateBulkPurchaseInput, CreatePurchaseInput, CreateTicketInput } from "./types";
+import type {
+  AdjustStaffStockInput,
+  AppApi,
+  AppTier,
+  CloseTicketInput,
+  CreateBulkPurchaseInput,
+  CreatePurchaseInput,
+  CreateTicketInput,
+  SellStaffStockInput
+} from "./types";
 
 const api: AppApi = {
   listStock: () => ipcRenderer.invoke("stock:list"),
@@ -13,7 +22,11 @@ const api: AppApi = {
   listHistory: () => ipcRenderer.invoke("history:list"),
   clearHistory: () => ipcRenderer.invoke("history:clear"),
   listPendingLeftoverCredits: (tier: AppTier) => ipcRenderer.invoke("leftover:listPending", tier),
-  closeTicket: (input: CloseTicketInput) => ipcRenderer.invoke("ticket:close", input)
+  closeTicket: (input: CloseTicketInput) => ipcRenderer.invoke("ticket:close", input),
+  listStaffStock: () => ipcRenderer.invoke("staffStock:list"),
+  listStaffMovements: () => ipcRenderer.invoke("staffStock:listMovements"),
+  adjustStaffStock: (input: AdjustStaffStockInput) => ipcRenderer.invoke("staffStock:adjust", input),
+  sellStaffStock: (input: SellStaffStockInput) => ipcRenderer.invoke("staffStock:sell", input)
 };
 
 contextBridge.exposeInMainWorld("blight", api);

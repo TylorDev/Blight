@@ -22,4 +22,13 @@ describe("number-format", () => {
   it("removes non-numeric characters before formatting", () => {
     expect(normalizeThousandsInput("abc4.500,100xyz")).toBe("4.500.100");
   });
+
+  it("removes leading zeroes before formatting", () => {
+    expect(formatThousands("0001234")).toBe("1.234");
+  });
+
+  it("normalizes and parses mixed currency text", () => {
+    expect(normalizeThousandsInput("$1.200abc")).toBe("1.200");
+    expect(parseThousands("$1.200abc")).toBe(1200);
+  });
 });

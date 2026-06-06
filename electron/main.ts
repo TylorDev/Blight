@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import { join } from "node:path";
 import {
+  adjustStaffStock,
   closeTicket,
   clearStock,
   clearHistory,
@@ -13,10 +14,21 @@ import {
   listHistory,
   listOpenTickets,
   listPendingLeftoverCredits,
+  listStaffMovements,
+  listStaffStock,
   listStock,
-  listTickets
+  listTickets,
+  sellStaffStock
 } from "./inventory-service";
-import type { AppTier, CloseTicketInput, CreateBulkPurchaseInput, CreatePurchaseInput, CreateTicketInput } from "./types";
+import type {
+  AdjustStaffStockInput,
+  AppTier,
+  CloseTicketInput,
+  CreateBulkPurchaseInput,
+  CreatePurchaseInput,
+  CreateTicketInput,
+  SellStaffStockInput
+} from "./types";
 
 const rendererUrl = process.env.ELECTRON_RENDERER_URL;
 
@@ -87,6 +99,10 @@ app.whenReady().then(async () => {
   ipcMain.handle("history:clear", () => clearHistory());
   ipcMain.handle("leftover:listPending", (_event, tier: AppTier) => listPendingLeftoverCredits(tier));
   ipcMain.handle("ticket:close", (_event, input: CloseTicketInput) => closeTicket(input));
+  ipcMain.handle("staffStock:list", () => listStaffStock());
+  ipcMain.handle("staffStock:listMovements", () => listStaffMovements());
+  ipcMain.handle("staffStock:adjust", (_event, input: AdjustStaffStockInput) => adjustStaffStock(input));
+  ipcMain.handle("staffStock:sell", (_event, input: SellStaffStockInput) => sellStaffStock(input));
 
   createWindow();
 

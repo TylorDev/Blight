@@ -31,6 +31,20 @@ enum TicketStatus {
   CERRADO
 }
 
+enum StaffQuality {
+  NORMAL
+  BUENA
+  NOTABLE
+  SOBRESALIENTE
+  OBRA_MAESTRA
+}
+
+enum StaffMovementType {
+  PRODUCCION
+  AJUSTE
+  VENTA
+}
+
 model StockItem {
   id          String        @id @default(cuid())
   category    StockCategory
@@ -52,7 +66,7 @@ model StockMovement {
   quantity  Int
   total     Float
   ticketId  String?
-  ticket    FabricationTicket? @relation(fields: [ticketId], references: [id])
+  ticket    FabricationTicket? @relation(fields: [ticketId], references: [id], onDelete: SetNull)
   createdAt DateTime      @default(now())
 }
 
@@ -79,6 +93,8 @@ model FabricationTicket {
   consumptions    TicketConsumption[]
   sourceLeftoverCredits TicketLeftoverCredit[] @relation("SourceTicketLeftovers")
   appliedLeftoverCredits TicketLeftoverCredit[] @relation("AppliedTicketLeftovers")
+  producedStaffs  TicketProducedStaff[]
+  staffMovements  StaffStockMovement[]
 }
 
 model TicketConsumption {
@@ -105,4 +121,38 @@ model TicketLeftoverCredit {
   appliedToTicket   FabricationTicket? @relation("AppliedTicketLeftovers", fields: [appliedToTicketId], references: [id])
   createdAt         DateTime           @default(now())
   appliedAt         DateTime?
+}
+
+model StaffStockItem {
+  id        String       @id @default(cuid())
+  tier      Tier
+  quality   StaffQuality
+  quantity  Int          @default(0)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([tier, quality])
+}
+
+model StaffStockMovement {
+  id        String            @id @default(cuid())
+  type      StaffMovementType
+  tier      Tier
+  quality   StaffQuality
+  quantity  Int
+  total     Float             @default(0)
+  reason    String?
+  ticketId  String?
+  ticket    FabricationTicket? @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  createdAt DateTime          @default(now())
+}
+
+model TicketProducedStaff {
+  id        String             @id @default(cuid())
+  ticketId  String?
+  ticket    FabricationTicket? @relation(fields: [ticketId], references: [id])
+  tier      Tier
+  quality   StaffQuality
+  quantity  Int
+  createdAt DateTime           @default(now())
 }

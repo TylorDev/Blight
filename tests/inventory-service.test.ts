@@ -1,4 +1,4 @@
-import { PrismaClient, StockCategory, Tier } from "@prisma/client";
+import { PrismaClient, StaffMovementType, StaffQuality, StockCategory, Tier } from "@prisma/client";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -29,18 +29,23 @@ describe("initializeDatabase", () => {
     await service.initializeDatabase();
 
     const stockCount = await prisma.stockItem.count();
+    const staffStockCount = await prisma.staffStockItem.count();
     const tableNames = await prisma.$queryRaw<Array<{ name: string }>>`
       SELECT name FROM sqlite_master WHERE type = 'table'
     `;
 
     expect(stockCount).toBe(16);
+    expect(staffStockCount).toBe(20);
     expect(tableNames.map((table) => table.name)).toEqual(
       expect.arrayContaining([
         "StockItem",
         "StockMovement",
         "FabricationTicket",
         "TicketConsumption",
-        "TicketLeftoverCredit"
+        "TicketLeftoverCredit",
+        "StaffStockItem",
+        "StaffStockMovement",
+        "TicketProducedStaff"
       ])
     );
   });
@@ -287,6 +292,8 @@ describe("tickets", () => {
     );
     expect(stock.every((item) => item.quantity === 0 && item.total === 0)).toBe(true);
     expect(ticketAfterCloseAttempt.status).toBe("ABIERTO");
+    expect(await prisma.ticketProducedStaff.count()).toBe(0);
+    expect(await prisma.staffStockMovement.count()).toBe(0);
   });
 
   it("closes a T5 ticket, discounts recipe stock, and records consumption history", async () => {
@@ -317,6 +324,30 @@ describe("tickets", () => {
       total: 81000,
       averageCost: 1000
     });
+    expect(result.ticket?.producedStaffs).toEqual([
+      expect.objectContaining({ tier: Tier.T5, quality: StaffQuality.NORMAL, quantity: 6 })
+    ]);
+    expect(await prisma.staffStockItem.findUniqueOrThrow({
+      where: { tier_quality: { tier: Tier.T5, quality: StaffQuality.NORMAL } }
+    })).toMatchObject({ quantity: 6 });
+    expect(await prisma.staffStockMovement.count({
+      where: { type: StaffMovementType.PRODUCCION, ticketId: ticket.id }
+    })).toBe(1);
+  });
+
+  it("rejects closing when produced staff quantities do not match staff quantity", async () => {
+    await seedRecipeStock(Tier.T5, 100, 1000);
+    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+
+    await expect(
+      service.closeTicket(
+        closeInput(ticket.id, {
+          producedStaffs: [{ quality: StaffQuality.NORMAL, quantity: 5 }]
+        })
+      )
+    ).rejects.toThrow("bastones");
+
+    expect(await prisma.ticketProducedStaff.count()).toBe(0);
   });
 
   it("applies filled diary discount to the ticket total", async () => {
@@ -493,6 +524,8 @@ describe("tickets", () => {
     expect(secondClose.ticket?.investmentTotal).toBeCloseTo(148048, 4);
     expect(consumptions).toHaveLength(4);
     expect(stockItem(stock, StockCategory.TABLAS, Tier.T5).quantity).toBe(27);
+    expect(await prisma.ticketProducedStaff.count({ where: { ticketId: ticket.id } })).toBe(1);
+    expect(await prisma.staffStockMovement.count({ where: { ticketId: ticket.id } })).toBe(1);
   });
 
   it("lists tickets with ISO dates and included consumptions", async () => {
@@ -508,6 +541,59 @@ describe("tickets", () => {
     expect(closedTicket?.consumptions).toHaveLength(4);
     expect(closedTicket?.investmentTotal).toBeCloseTo(148048, 4);
     expect(closedTicket?.unitCost).toBeCloseTo(24674.6667, 4);
+  });
+
+  it("sells staff stock and records a movement", async () => {
+    await seedRecipeStock(Tier.T5, 100, 1000);
+    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    await service.closeTicket(closeInput(ticket.id));
+
+    const updated = await service.sellStaffStock({
+      tier: Tier.T5,
+      quality: StaffQuality.NORMAL,
+      quantity: 2,
+      total: 5000
+    });
+    const movement = await prisma.staffStockMovement.findFirstOrThrow({
+      where: { type: StaffMovementType.VENTA, tier: Tier.T5, quality: StaffQuality.NORMAL }
+    });
+
+    expect(updated.quantity).toBe(4);
+    expect(movement).toMatchObject({ quantity: 2, total: 5000, reason: "Venta" });
+  });
+
+  it("rejects selling more staff than available", async () => {
+    await expect(
+      service.sellStaffStock({ tier: Tier.T5, quality: StaffQuality.NORMAL, quantity: 1, total: 1000 })
+    ).rejects.toThrow("suficientes");
+  });
+
+  it("adjusts staff stock with a reason and prevents negative stock", async () => {
+    const added = await service.adjustStaffStock({
+      tier: Tier.T6,
+      quality: StaffQuality.NOTABLE,
+      quantity: 3,
+      reason: "Conteo inicial"
+    });
+    const removed = await service.adjustStaffStock({
+      tier: Tier.T6,
+      quality: StaffQuality.NOTABLE,
+      quantity: -1,
+      reason: "Correccion"
+    });
+
+    await expect(
+      service.adjustStaffStock({
+        tier: Tier.T6,
+        quality: StaffQuality.NOTABLE,
+        quantity: -3,
+        reason: "Error"
+      })
+    ).rejects.toThrow("negativo");
+
+    expect(added.quantity).toBe(3);
+    expect(removed.quantity).toBe(2);
+    expect(await prisma.staffStockMovement.count({ where: { type: StaffMovementType.AJUSTE } })).toBe(2);
   });
 });
 
@@ -578,6 +664,7 @@ function closeInput(ticketId: string, overrides: Partial<CloseTicketInput> = {})
     filledDiariesDiscount: 0,
     leftoverTablesQuantity: 1,
     leftoverClothsQuantity: 1,
+    producedStaffs: [{ quality: StaffQuality.NORMAL, quantity: 6 }],
     ...overrides
   };
 }

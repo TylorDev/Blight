@@ -51,6 +51,23 @@ describe("stock-store", () => {
     expect(useStockStore.getState().stock).toEqual(nextStock);
   });
 
+  it("stores and rethrows create purchase errors without refreshing stock", async () => {
+    const failure = new Error("purchase failed");
+    blight.createPurchase.mockRejectedValue(failure);
+
+    await expect(
+      useStockStore.getState().createPurchase({
+        category: "TABLAS" as Category,
+        tier: "T5" as AppTier,
+        quantity: 1,
+        total: 200
+      })
+    ).rejects.toThrow("purchase failed");
+
+    expect(useStockStore.getState().error).toBe("purchase failed");
+    expect(blight.listStock).not.toHaveBeenCalled();
+  });
+
   it("creates a bulk purchase and refreshes stock", async () => {
     const nextStock = [createStockItem({ category: "TELAS" as Category, quantity: 3 })];
     blight.createBulkPurchase.mockResolvedValue(nextStock);
@@ -67,6 +84,21 @@ describe("stock-store", () => {
     });
     expect(blight.listStock).toHaveBeenCalledTimes(1);
     expect(useStockStore.getState().stock).toEqual(nextStock);
+  });
+
+  it("stores and rethrows bulk purchase errors without refreshing stock", async () => {
+    const failure = new Error("bulk purchase failed");
+    blight.createBulkPurchase.mockRejectedValue(failure);
+
+    await expect(
+      useStockStore.getState().createBulkPurchase({
+        tier: "T6" as AppTier,
+        purchases: [{ category: "TELAS" as Category, quantity: 3, total: 900 }]
+      })
+    ).rejects.toThrow("bulk purchase failed");
+
+    expect(useStockStore.getState().error).toBe("bulk purchase failed");
+    expect(blight.listStock).not.toHaveBeenCalled();
   });
 
   it("clears stock with the API response", async () => {

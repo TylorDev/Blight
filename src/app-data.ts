@@ -1,7 +1,22 @@
-import type { AppTier, Category, FabricationTicketView, LeftoverCreditView, StockItemView } from "../electron/types";
+import type {
+  AppTier,
+  Category,
+  FabricationTicketView,
+  LeftoverCreditView,
+  StaffMovementTypeView,
+  StaffQualityView,
+  StockItemView
+} from "../electron/types";
 
 export const categories: Category[] = ["TABLAS", "TELAS", "DIARIOS_VACIOS", "ARTEFACTOS"];
 export const tiers: AppTier[] = ["T5", "T6", "T7", "T8"];
+export const staffQualities: StaffQualityView[] = [
+  "NORMAL",
+  "BUENA",
+  "NOTABLE",
+  "SOBRESALIENTE",
+  "OBRA_MAESTRA"
+];
 
 export const tierLabels: Record<AppTier, string> = {
   T5: "T5",
@@ -15,6 +30,20 @@ export const categoryLabels: Record<Category, string> = {
   TELAS: "Telas",
   DIARIOS_VACIOS: "Diarios Vacios",
   ARTEFACTOS: "Artefactos"
+};
+
+export const staffQualityLabels: Record<StaffQualityView, string> = {
+  NORMAL: "Normal",
+  BUENA: "Buena",
+  NOTABLE: "Notable",
+  SOBRESALIENTE: "Sobresaliente",
+  OBRA_MAESTRA: "Obra Maestra"
+};
+
+export const staffMovementTypeLabels: Record<StaffMovementTypeView, string> = {
+  PRODUCCION: "Produccion",
+  AJUSTE: "Ajuste",
+  VENTA: "Venta"
 };
 
 export const recipeDiary: Record<AppTier, number> = {

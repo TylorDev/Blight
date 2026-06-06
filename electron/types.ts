@@ -1,7 +1,9 @@
-import type { StockCategory, TicketStatus, Tier } from "@prisma/client";
+import type { StaffMovementType, StaffQuality, StockCategory, TicketStatus, Tier } from "@prisma/client";
 
 export type Category = StockCategory;
 export type AppTier = Tier;
+export type StaffQualityView = StaffQuality;
+export type StaffMovementTypeView = StaffMovementType;
 
 export interface StockItemView {
   id: string;
@@ -19,6 +21,15 @@ export interface TicketConsumptionView {
   quantity: number;
   discountedTotal: number;
   averageCostUsed: number;
+}
+
+export interface TicketProducedStaffView {
+  id: string;
+  ticketId: string | null;
+  tier: AppTier;
+  quality: StaffQualityView;
+  quantity: number;
+  createdAt: string;
 }
 
 export interface FabricationTicketView {
@@ -42,6 +53,26 @@ export interface FabricationTicketView {
   closedAt: string | null;
   consumptions: TicketConsumptionView[];
   appliedLeftoverCredits: LeftoverCreditView[];
+  producedStaffs: TicketProducedStaffView[];
+}
+
+export interface StaffStockItemView {
+  id: string;
+  tier: AppTier;
+  quality: StaffQualityView;
+  quantity: number;
+}
+
+export interface StaffStockMovementView {
+  id: string;
+  type: StaffMovementTypeView;
+  tier: AppTier;
+  quality: StaffQualityView;
+  quantity: number;
+  total: number;
+  reason: string | null;
+  ticketId: string | null;
+  createdAt: string;
 }
 
 export interface MissingMaterial {
@@ -88,12 +119,27 @@ export interface CloseTicketInput {
   filledDiariesDiscount: number;
   leftoverTablesQuantity: number;
   leftoverClothsQuantity: number;
+  producedStaffs: Array<{ quality: StaffQualityView; quantity: number }>;
 }
 
 export interface CloseTicketResult {
   ok: boolean;
   ticket?: FabricationTicketView;
   missing?: MissingMaterial[];
+}
+
+export interface AdjustStaffStockInput {
+  tier: AppTier;
+  quality: StaffQualityView;
+  quantity: number;
+  reason: string;
+}
+
+export interface SellStaffStockInput {
+  tier: AppTier;
+  quality: StaffQualityView;
+  quantity: number;
+  total: number;
 }
 
 export interface AppApi {
@@ -109,4 +155,8 @@ export interface AppApi {
   clearHistory: () => Promise<FabricationTicketView[]>;
   listPendingLeftoverCredits: (tier: AppTier) => Promise<LeftoverCreditView[]>;
   closeTicket: (input: CloseTicketInput) => Promise<CloseTicketResult>;
+  listStaffStock: () => Promise<StaffStockItemView[]>;
+  listStaffMovements: () => Promise<StaffStockMovementView[]>;
+  adjustStaffStock: (input: AdjustStaffStockInput) => Promise<StaffStockItemView>;
+  sellStaffStock: (input: SellStaffStockInput) => Promise<StaffStockItemView>;
 }

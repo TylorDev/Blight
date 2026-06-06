@@ -27,6 +27,16 @@ describe("ticket-store", () => {
     expect(useTicketStore.getState().loading).toBe(false);
   });
 
+  it("stores and rethrows load ticket errors and clears loading", async () => {
+    const failure = new Error("tickets unavailable");
+    blight.listOpenTickets.mockRejectedValue(failure);
+
+    await expect(useTicketStore.getState().loadTickets()).rejects.toThrow("tickets unavailable");
+
+    expect(useTicketStore.getState().error).toBe("tickets unavailable");
+    expect(useTicketStore.getState().loading).toBe(false);
+  });
+
   it("creates a ticket, clears missing materials, and refreshes open tickets", async () => {
     const tickets = [createTicket({ id: "ticket-2" })];
     useTicketStore.getState().setMissingMaterials(["Tablas T5 (0/73)"]);
@@ -39,6 +49,20 @@ describe("ticket-store", () => {
     expect(blight.listOpenTickets).toHaveBeenCalledTimes(1);
     expect(useTicketStore.getState().missingMaterials).toEqual([]);
     expect(useTicketStore.getState().tickets).toEqual(tickets);
+  });
+
+  it("clears missing materials and rethrows create ticket errors without refreshing tickets", async () => {
+    const failure = new Error("create failed");
+    useTicketStore.getState().setMissingMaterials(["Tablas T5 (0/73)"]);
+    blight.createTicket.mockRejectedValue(failure);
+
+    await expect(useTicketStore.getState().createTicket({ tier: "T5" as AppTier, tax: 100 })).rejects.toThrow(
+      "create failed"
+    );
+
+    expect(useTicketStore.getState().missingMaterials).toEqual([]);
+    expect(useTicketStore.getState().error).toBe("create failed");
+    expect(blight.listOpenTickets).not.toHaveBeenCalled();
   });
 
   it("deletes an open ticket, clears missing materials, and refreshes open tickets", async () => {
@@ -66,7 +90,8 @@ describe("ticket-store", () => {
       filledDiariesQuantity: 0,
       filledDiariesDiscount: 0,
       leftoverTablesQuantity: 0,
-      leftoverClothsQuantity: 0
+      leftoverClothsQuantity: 0,
+      producedStaffs: [{ quality: "NORMAL", quantity: 6 }]
     });
 
     expect(result).toEqual({ ok: true, ticket: closedTicket });
@@ -84,6 +109,18 @@ describe("ticket-store", () => {
           tier: "T5" as AppTier,
           required: 73,
           available: 0
+        },
+        {
+          category: "TELAS" as Category,
+          tier: "T5" as AppTier,
+          required: 44,
+          available: 10
+        },
+        {
+          category: "ARTEFACTOS" as Category,
+          tier: "T5" as AppTier,
+          required: 6,
+          available: 2
         }
       ]
     });
@@ -93,12 +130,17 @@ describe("ticket-store", () => {
       filledDiariesQuantity: 0,
       filledDiariesDiscount: 0,
       leftoverTablesQuantity: 0,
-      leftoverClothsQuantity: 0
+      leftoverClothsQuantity: 0,
+      producedStaffs: [{ quality: "NORMAL", quantity: 6 }]
     });
 
     expect(result.ok).toBe(false);
     expect(blight.listOpenTickets).not.toHaveBeenCalled();
-    expect(useTicketStore.getState().missingMaterials).toEqual(["Tablas T5 (0/73)"]);
+    expect(useTicketStore.getState().missingMaterials).toEqual([
+      "Tablas T5 (0/73)",
+      "Telas T5 (10/44)",
+      "Artefactos T5 (2/6)"
+    ]);
   });
 
   it("delegates pending leftover credit loading", async () => {
@@ -120,7 +162,8 @@ describe("ticket-store", () => {
         filledDiariesQuantity: 0,
         filledDiariesDiscount: 0,
         leftoverTablesQuantity: 0,
-        leftoverClothsQuantity: 0
+        leftoverClothsQuantity: 0,
+        producedStaffs: [{ quality: "NORMAL", quantity: 6 }]
       })
     ).rejects.toThrow("close failed");
 

@@ -1,13 +1,15 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { Archive, CircleDollarSign, Factory, History, Loader2 } from "lucide-react";
+import { Archive, CircleDollarSign, Factory, History, Loader2, Package } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { BulkPurchaseDialog, ClearStockDialog, Metric, PurchaseDialog, TicketDialog } from "./Components";
 import { formatCurrency, formatNumber } from "./app-data";
 import { HistoryTab } from "./Pages/HistoryTab/HistoryTab";
 import { StockTab } from "./Pages/StockTab/StockTab";
+import { StaffStockTab } from "./Pages/StaffStockTab/StaffStockTab";
 import { TicketTab } from "./Pages/TicketTab/TicketTab";
 import { useHistoryStore } from "./stores/history-store";
+import { useStaffStockStore } from "./stores/staff-stock-store";
 import { useStockStore } from "./stores/stock-store";
 import { useTicketStore } from "./stores/ticket-store";
 
@@ -22,13 +24,17 @@ function App() {
   const closedTicketsCount = useHistoryStore((state) => state.tickets.length);
   const historyError = useHistoryStore((state) => state.error);
   const loadHistory = useHistoryStore((state) => state.loadHistory);
+  const staffStock = useStaffStockStore((state) => state.stock);
+  const staffStockError = useStaffStockStore((state) => state.error);
+  const loadStaffStock = useStaffStockStore((state) => state.loadStaffStock);
+  const loadStaffMovements = useStaffStockStore((state) => state.loadStaffMovements);
   const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
-    void Promise.all([loadStock(), loadTickets(), loadHistory()])
+    void Promise.all([loadStock(), loadTickets(), loadHistory(), loadStaffStock(), loadStaffMovements()])
       .catch(() => undefined)
       .finally(() => setInitialLoading(false));
-  }, [loadHistory, loadStock, loadTickets]);
+  }, [loadHistory, loadStaffMovements, loadStaffStock, loadStock, loadTickets]);
 
   const totals = useMemo(() => {
     return stock.reduce(
@@ -40,7 +46,8 @@ function App() {
     );
   }, [stock]);
 
-  const errors = [stockError, ticketError, historyError].filter(Boolean);
+  const staffQuantity = staffStock.reduce((total, item) => total + item.quantity, 0);
+  const errors = [stockError, ticketError, historyError, staffStockError].filter(Boolean);
 
   if (initialLoading) {
     return (
@@ -72,6 +79,7 @@ function App() {
           <Metric icon={<CircleDollarSign />} label="Valor inventario" value={formatCurrency(totals.total)} />
           <Metric icon={<Factory />} label="Tickets abiertos" value={String(openTicketsCount)} />
           <Metric icon={<History />} label="Fabricaciones" value={String(closedTicketsCount)} />
+          <Metric icon={<Package />} label="Bastones en stock" value={formatNumber(staffQuantity)} />
         </section>
 
         {errors.map((error) => (
@@ -90,6 +98,7 @@ function App() {
             <Tabs.Trigger value="stock">Inventario</Tabs.Trigger>
             <Tabs.Trigger value="tickets">Tickets</Tabs.Trigger>
             <Tabs.Trigger value="history">Historial</Tabs.Trigger>
+            <Tabs.Trigger value="staff">Bastones</Tabs.Trigger>
           </Tabs.List>
 
           <Tabs.Content value="stock" className="panel">
@@ -102,6 +111,10 @@ function App() {
 
           <Tabs.Content value="history" className="panel">
             <HistoryTab />
+          </Tabs.Content>
+
+          <Tabs.Content value="staff" className="panel">
+            <StaffStockTab />
           </Tabs.Content>
         </Tabs.Root>
       </main>

@@ -5,6 +5,9 @@ import type {
   Category,
   FabricationTicketView,
   LeftoverCreditView,
+  StaffQualityView,
+  StaffStockItemView,
+  StaffStockMovementView,
   StockItemView
 } from "../../electron/types";
 
@@ -25,7 +28,11 @@ export function installBlightMock() {
     listHistory: vi.fn(),
     clearHistory: vi.fn(),
     listPendingLeftoverCredits: vi.fn(),
-    closeTicket: vi.fn()
+    closeTicket: vi.fn(),
+    listStaffStock: vi.fn(),
+    listStaffMovements: vi.fn(),
+    adjustStaffStock: vi.fn(),
+    sellStaffStock: vi.fn()
   };
 
   Object.defineProperty(globalThis, "window", {
@@ -70,6 +77,32 @@ export function createTicket(overrides: Partial<FabricationTicketView> = {}): Fa
     closedAt: null,
     consumptions: [],
     appliedLeftoverCredits: [],
+    producedStaffs: [],
+    ...overrides
+  };
+}
+
+export function createStaffStockItem(overrides: Partial<StaffStockItemView> = {}): StaffStockItemView {
+  return {
+    id: "staff-stock-1",
+    tier: "T5" as AppTier,
+    quality: "NORMAL" as StaffQualityView,
+    quantity: 3,
+    ...overrides
+  };
+}
+
+export function createStaffStockMovement(overrides: Partial<StaffStockMovementView> = {}): StaffStockMovementView {
+  return {
+    id: "staff-movement-1",
+    type: "PRODUCCION",
+    tier: "T5" as AppTier,
+    quality: "NORMAL" as StaffQualityView,
+    quantity: 3,
+    total: 0,
+    reason: "Produccion de ticket",
+    ticketId: "ticket-1",
+    createdAt: "2026-01-01T00:00:00.000Z",
     ...overrides
   };
 }

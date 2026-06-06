@@ -1,4 +1,4 @@
-import { PrismaClient, StockCategory, Tier } from "@prisma/client";
+import { PrismaClient, StaffQuality, StockCategory, Tier } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -9,6 +9,13 @@ const categories = [
   StockCategory.ARTEFACTOS
 ];
 const tiers = [Tier.T5, Tier.T6, Tier.T7, Tier.T8];
+const staffQualities = [
+  StaffQuality.NORMAL,
+  StaffQuality.BUENA,
+  StaffQuality.NOTABLE,
+  StaffQuality.SOBRESALIENTE,
+  StaffQuality.OBRA_MAESTRA
+];
 
 async function main() {
   await prisma.$executeRawUnsafe(`
@@ -111,6 +118,49 @@ async function main() {
     CREATE UNIQUE INDEX IF NOT EXISTS "StockItem_category_tier_key"
     ON "StockItem"("category", "tier");
   `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "StaffStockItem" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "tier" TEXT NOT NULL,
+      "quality" TEXT NOT NULL,
+      "quantity" INTEGER NOT NULL DEFAULT 0,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL
+    );
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "StaffStockMovement" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "type" TEXT NOT NULL,
+      "tier" TEXT NOT NULL,
+      "quality" TEXT NOT NULL,
+      "quantity" INTEGER NOT NULL,
+      "total" REAL NOT NULL DEFAULT 0,
+      "reason" TEXT,
+      "ticketId" TEXT,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "StaffStockMovement_ticketId_fkey"
+        FOREIGN KEY ("ticketId") REFERENCES "FabricationTicket" ("id")
+        ON DELETE SET NULL ON UPDATE CASCADE
+    );
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "TicketProducedStaff" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "ticketId" TEXT,
+      "tier" TEXT NOT NULL,
+      "quality" TEXT NOT NULL,
+      "quantity" INTEGER NOT NULL,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "TicketProducedStaff_ticketId_fkey"
+        FOREIGN KEY ("ticketId") REFERENCES "FabricationTicket" ("id")
+        ON DELETE SET NULL ON UPDATE CASCADE
+    );
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "StaffStockItem_tier_quality_key"
+    ON "StaffStockItem"("tier", "quality");
+  `);
 
   for (const category of categories) {
     for (const tier of tiers) {
@@ -118,6 +168,16 @@ async function main() {
         where: { category_tier: { category, tier } },
         update: {},
         create: { category, tier }
+      });
+    }
+  }
+
+  for (const tier of tiers) {
+    for (const quality of staffQualities) {
+      await prisma.staffStockItem.upsert({
+        where: { tier_quality: { tier, quality } },
+        update: {},
+        create: { tier, quality }
       });
     }
   }

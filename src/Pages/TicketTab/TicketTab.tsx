@@ -9,11 +9,14 @@ import {
   formatNumber,
   getDefaultFilledDiariesDiscount,
   getDefaultFilledDiariesQuantity,
-  getRecentLeftoverQuantitySuggestions
+  getRecentLeftoverQuantitySuggestions,
+  staffQualities,
+  staffQualityLabels
 } from "../../app-data";
 import { EmptyState, Recipe, TicketCosts, TierBadge } from "../../Components";
 import { normalizeThousandsInput, parseThousands } from "../../number-format";
 import { useHistoryStore } from "../../stores/history-store";
+import { useStaffStockStore } from "../../stores/staff-stock-store";
 import { useStockStore } from "../../stores/stock-store";
 import { useTicketStore } from "../../stores/ticket-store";
 import "./TicketTab.scss";
@@ -113,12 +116,17 @@ function CloseTicketDialog({ ticket }: { ticket: FabricationTicketView }) {
   const [filledDiariesDiscount, setFilledDiariesDiscount] = useState("");
   const [leftoverTablesQuantity, setLeftoverTablesQuantity] = useState("");
   const [leftoverClothsQuantity, setLeftoverClothsQuantity] = useState("");
+  const [producedStaffs, setProducedStaffs] = useState<Record<string, string>>(() =>
+    Object.fromEntries(staffQualities.map((quality, index) => [quality, index === 0 ? "6" : ""]))
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const closeTicket = useTicketStore((state) => state.closeTicket);
   const clearTicketError = useTicketStore((state) => state.clearError);
   const setMissingMaterials = useTicketStore((state) => state.setMissingMaterials);
   const loadStock = useStockStore((state) => state.loadStock);
+  const loadStaffStock = useStaffStockStore((state) => state.loadStaffStock);
+  const loadStaffMovements = useStaffStockStore((state) => state.loadStaffMovements);
   const closedTickets = useHistoryStore((state) => state.tickets);
   const loadHistory = useHistoryStore((state) => state.loadHistory);
   const defaultFilledDiariesQuantity = getDefaultFilledDiariesQuantity(ticket.tier);
@@ -149,6 +157,15 @@ function CloseTicketDialog({ ticket }: { ticket: FabricationTicketView }) {
       setError("Cantidad de Tablas Sobrantes y Cantidad de Telas Sobrantes deben ser mayores a cero.");
       return;
     }
+    const parsedProducedStaffs = staffQualities.map((quality) => ({
+      quality,
+      quantity: parseThousands(producedStaffs[quality] ?? "")
+    }));
+    const producedStaffTotal = parsedProducedStaffs.reduce((total, staff) => total + staff.quantity, 0);
+    if (producedStaffTotal !== ticket.staffQuantity) {
+      setError(`La suma de bastones creados debe ser ${ticket.staffQuantity}.`);
+      return;
+    }
 
     setSaving(true);
 
@@ -160,19 +177,21 @@ function CloseTicketDialog({ ticket }: { ticket: FabricationTicketView }) {
         filledDiariesDiscount:
           filledDiariesDiscount === "" ? defaultFilledDiariesDiscount : parseThousands(filledDiariesDiscount),
         leftoverTablesQuantity: parsedLeftoverTablesQuantity,
-        leftoverClothsQuantity: parsedLeftoverClothsQuantity
+        leftoverClothsQuantity: parsedLeftoverClothsQuantity,
+        producedStaffs: parsedProducedStaffs
       });
 
       if (!result.ok) {
         return;
       }
 
-      await Promise.all([loadStock(), loadHistory()]);
+      await Promise.all([loadStock(), loadHistory(), loadStaffStock(), loadStaffMovements()]);
       setOpen(false);
       setFilledDiariesQuantity("");
       setFilledDiariesDiscount("");
       setLeftoverTablesQuantity("");
       setLeftoverClothsQuantity("");
+      setProducedStaffs(Object.fromEntries(staffQualities.map((quality, index) => [quality, index === 0 ? "6" : ""])));
     } catch (currentError) {
       const message = currentError instanceof Error ? currentError.message : "No se pudo cerrar el ticket.";
       setError(message);
@@ -251,6 +270,26 @@ function CloseTicketDialog({ ticket }: { ticket: FabricationTicketView }) {
                 ))}
               </datalist>
             </label>
+            <div className="staff-production-fields">
+              <strong>Bastones creados</strong>
+              {staffQualities.map((quality) => (
+                <label className="field" key={quality}>
+                  {staffQualityLabels[quality]}
+                  <input
+                    value={producedStaffs[quality] ?? ""}
+                    onChange={(event) =>
+                      setProducedStaffs((current) => ({
+                        ...current,
+                        [quality]: normalizeThousandsInput(event.target.value)
+                      }))
+                    }
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9.]*"
+                  />
+                </label>
+              ))}
+            </div>
             {error ? <p className="form-error">{error}</p> : null}
             <div className="modal-actions">
               <Dialog.Close asChild>

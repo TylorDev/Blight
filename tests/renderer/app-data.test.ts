@@ -29,6 +29,23 @@ describe("app-data", () => {
     expect(preview.materials.find((material) => material.category === "TELAS")?.quantity).toBe(37);
   });
 
+  it("never reduces effective recipe materials below zero with pending leftovers", () => {
+    const preview = calculateTicketPreview([], "T5", 100, [
+      createLeftoverCredit({ category: "TABLAS", quantity: 100, value: 100000 }),
+      createLeftoverCredit({ category: "TELAS", quantity: 100, value: 100000 })
+    ]);
+
+    expect(preview.materials.find((material) => material.category === "TABLAS")?.quantity).toBe(0);
+    expect(preview.materials.find((material) => material.category === "TELAS")?.quantity).toBe(0);
+  });
+
+  it.each([-1, 0, Number.NaN])("uses zero effective tax for invalid raw tax %s", (rawTax) => {
+    const preview = calculateTicketPreview([], "T5", rawTax);
+
+    expect(preview.craftingTaxUnit).toBe(0);
+    expect(preview.craftingTaxTotal).toBe(0);
+  });
+
   it("uses the most recent closed ticket tax across tiers", () => {
     const tickets = [
       createTicket({ status: "CERRADO", tax: 200, closedAt: "2026-01-01T00:00:00.000Z" }),
