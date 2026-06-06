@@ -1,27 +1,21 @@
-import * as Dialog from "@radix-ui/react-dialog";
-import { CircleDollarSign, Loader2, Package, SlidersHorizontal, X } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import type {
-  AppTier,
-  StaffQualityView,
-  StaffStockItemView,
-  StaffStockLotView,
-  StaffStockMovementView
-} from "../../../electron/types";
+import { useEffect, useMemo } from "react";
+import type { AppTier, StaffQualityView } from "../../../electron/types";
 import {
   FilterValue,
   formatCurrency,
-  formatDate,
   formatNumber,
-  staffMovementTypeLabels,
   staffQualities,
   staffQualityLabels,
   tierLabels,
   tiers
 } from "../../app-data";
-import { EmptyState, SelectField, TierBadge } from "../../Components";
-import { normalizeThousandsInput, parseThousands } from "../../number-format";
+import { SelectField } from "../../Components";
 import { useStaffStockStore } from "../../stores/staff-stock-store";
+import { AdjustStaffDialog } from "./components/AdjustStaffDialog";
+import { SellStaffDialog } from "./components/SellStaffDialog";
+import { StaffMetric } from "./components/StaffMetric";
+import { StaffMovementTable } from "./components/StaffMovementTable";
+import { StaffStockTable } from "./components/StaffStockTable";
 import "./StaffStockTab.scss";
 
 export function StaffStockTab() {
@@ -110,213 +104,5 @@ export function StaffStockTab() {
         </section>
       </div>
     </section>
-  );
-}
-
-function StaffMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <article className="staff-market-metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </article>
-  );
-}
-
-function StaffStockTable({ items }: { items: StaffStockLotView[] }) {
-  if (items.length === 0) {
-    return <EmptyState text="No hay stock de bastones." />;
-  }
-
-  return (
-    <div className="staff-market-table staff-market-table--stock">
-      <div className="staff-market-row staff-market-row--head">
-        <span>Tier</span>
-        <span>Calidad</span>
-        <span>Cantidad</span>
-        <span>Coste</span>
-        <span>Ticket</span>
-      </div>
-      {items.map((item) => (
-        <div className="staff-market-row" key={item.id}>
-          <TierBadge tier={item.tier} />
-          <span>{staffQualityLabels[item.quality]}</span>
-          <strong>{formatNumber(item.quantity)}</strong>
-          <span>{formatCurrency(item.unitCost)}</span>
-          <span>{item.ticketCode}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function StaffMovementTable({ movements }: { movements: StaffStockMovementView[] }) {
-  if (movements.length === 0) {
-    return <EmptyState text="No hay movimientos de bastones." />;
-  }
-
-  return (
-    <div className="staff-market-table staff-market-table--movements">
-      <div className="staff-market-row staff-market-row--head">
-        <span>Fecha</span>
-        <span>Tipo</span>
-        <span>Tier</span>
-        <span>Calidad</span>
-        <span>Cantidad</span>
-        <span>Total</span>
-        <span>Motivo</span>
-      </div>
-      {movements.map((movement) => (
-        <div className="staff-market-row" key={movement.id}>
-          <span>{formatDate(movement.createdAt)}</span>
-          <span>{staffMovementTypeLabels[movement.type]}</span>
-          <TierBadge tier={movement.tier} />
-          <span>{staffQualityLabels[movement.quality]}</span>
-          <strong>{formatNumber(movement.quantity)}</strong>
-          <span>{formatCurrency(movement.total)}</span>
-          <span>{movement.reason ?? (movement.ticketId ? `Ticket ${movement.ticketId.slice(0, 8)}` : "-")}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function SellStaffDialog({ stock }: { stock: StaffStockItemView[] }) {
-  const [open, setOpen] = useState(false);
-  const [tier, setTier] = useState<AppTier>("T5");
-  const [quality, setQuality] = useState<StaffQualityView>("NORMAL");
-  const [quantity, setQuantity] = useState("");
-  const [total, setTotal] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const sellStaffStock = useStaffStockStore((state) => state.sellStaffStock);
-  const available = stock.find((item) => item.tier === tier && item.quality === quality)?.quantity ?? 0;
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
-      await sellStaffStock({ tier, quality, quantity: parseThousands(quantity), total: parseThousands(total) });
-      setQuantity("");
-      setTotal("");
-      setOpen(false);
-    } catch (currentError) {
-      setError(currentError instanceof Error ? currentError.message : "No se pudo registrar la venta.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger asChild>
-        <button className="button primary">
-          <CircleDollarSign />
-          Registrar venta
-        </button>
-      </Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Overlay className="overlay" />
-        <Dialog.Content className="modal">
-          <Dialog.Title>Venta de bastones</Dialog.Title>
-          <Dialog.Description className="modal-copy">Disponible: {formatNumber(available)}</Dialog.Description>
-          <form className="form" onSubmit={submit}>
-            <SelectField label="Tier" value={tier} onValueChange={(value) => setTier(value as AppTier)} options={tiers} labels={tierLabels} />
-            <SelectField label="Calidad" value={quality} onValueChange={(value) => setQuality(value as StaffQualityView)} options={staffQualities} labels={staffQualityLabels} />
-            <label className="field">
-              Cantidad
-              <input value={quantity} onChange={(event) => setQuantity(normalizeThousandsInput(event.target.value))} type="text" inputMode="numeric" pattern="[0-9.]*" />
-            </label>
-            <label className="field">
-              Total venta
-              <input value={total} onChange={(event) => setTotal(normalizeThousandsInput(event.target.value))} type="text" inputMode="numeric" pattern="[0-9.]*" />
-            </label>
-            {error ? <p className="form-error">{error}</p> : null}
-            <div className="modal-actions">
-              <Dialog.Close asChild>
-                <button className="button ghost" type="button">Cancelar</button>
-              </Dialog.Close>
-              <button className="button primary" type="submit" disabled={saving}>
-                {saving ? <Loader2 className="spin" /> : <CircleDollarSign />}
-                Vender
-              </button>
-            </div>
-          </form>
-          <Dialog.Close asChild>
-            <button className="icon-close" aria-label="Cerrar"><X /></button>
-          </Dialog.Close>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  );
-}
-
-function AdjustStaffDialog() {
-  const [open, setOpen] = useState(false);
-  const [tier, setTier] = useState<AppTier>("T5");
-  const [quality, setQuality] = useState<StaffQualityView>("NORMAL");
-  const [quantity, setQuantity] = useState("1");
-  const [reason, setReason] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const adjustStaffStock = useStaffStockStore((state) => state.adjustStaffStock);
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
-      await adjustStaffStock({ tier, quality, quantity: Number(quantity), reason });
-      setQuantity("1");
-      setReason("");
-      setOpen(false);
-    } catch (currentError) {
-      setError(currentError instanceof Error ? currentError.message : "No se pudo ajustar el stock.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger asChild>
-        <button className="button">
-          <SlidersHorizontal />
-          Ajustar stock
-        </button>
-      </Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Overlay className="overlay" />
-        <Dialog.Content className="modal">
-          <Dialog.Title>Ajuste de bastones</Dialog.Title>
-          <Dialog.Description className="sr-only">Suma o resta bastones del stock con motivo.</Dialog.Description>
-          <form className="form" onSubmit={submit}>
-            <SelectField label="Tier" value={tier} onValueChange={(value) => setTier(value as AppTier)} options={tiers} labels={tierLabels} />
-            <SelectField label="Calidad" value={quality} onValueChange={(value) => setQuality(value as StaffQualityView)} options={staffQualities} labels={staffQualityLabels} />
-            <label className="field">
-              Cantidad (+/-)
-              <input value={quantity} onChange={(event) => setQuantity(event.target.value)} type="number" step="1" />
-            </label>
-            <label className="field">
-              Motivo
-              <input value={reason} onChange={(event) => setReason(event.target.value)} type="text" />
-            </label>
-            {error ? <p className="form-error">{error}</p> : null}
-            <div className="modal-actions">
-              <Dialog.Close asChild>
-                <button className="button ghost" type="button">Cancelar</button>
-              </Dialog.Close>
-              <button className="button primary" type="submit" disabled={saving}>
-                {saving ? <Loader2 className="spin" /> : <Package />}
-                Guardar
-              </button>
-            </div>
-          </form>
-          <Dialog.Close asChild>
-            <button className="icon-close" aria-label="Cerrar"><X /></button>
-          </Dialog.Close>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
   );
 }
