@@ -3,6 +3,7 @@ import {
   BookOpenCheck,
   Calculator,
   CircleDollarSign,
+  Gauge,
   Hammer,
   Package,
   Recycle,
@@ -36,6 +37,7 @@ export function TicketCosts({ ticket, compact = false }: { ticket: FabricationTi
             { key: "tax", label: "Tax", value: formatCurrency(ticket.tax), icon: <BadgeDollarSign /> },
             { key: "craftingTax", label: "Crafting Tax", value: formatCurrency(ticket.craftingTax), icon: <Hammer /> },
             { key: "staffQuantity", label: "Bastones", value: String(ticket.staffQuantity), icon: staffIcon },
+            { key: "focusCost", label: "Foco", value: formatCurrency(ticket.focusCost), icon: <Gauge /> },
             {
               key: "investmentTotal",
               label: "Inversion Total",
@@ -65,6 +67,7 @@ export function TicketCosts({ ticket, compact = false }: { ticket: FabricationTi
           title: "Produccion",
           metrics: [
             { key: "staffQuantity", label: "Bastones", value: String(ticket.staffQuantity), icon: staffIcon },
+            { key: "focusCost", label: "Foco", value: formatCurrency(ticket.focusCost), icon: <Gauge /> },
             { key: "materialTotal", label: "Materiales", value: formatCurrency(ticket.materialTotal), icon: <Package /> },
             {
               key: "filledDiariesQuantity",

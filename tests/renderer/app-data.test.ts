@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateTicketPreview,
+  getRecipeFocusCost,
   getDefaultFilledDiariesDiscount,
   getDefaultFilledDiariesQuantity,
   getDefaultTicketTax,
-  getRecentLeftoverQuantitySuggestions
+  getRecentLeftoverQuantitySuggestions,
+  ticketRecipes
 } from "../../src/app-data";
 import { createLeftoverCredit, createStockItem, createTicket } from "./mock-blight";
 
@@ -19,6 +21,7 @@ describe("app-data", () => {
       ],
       "T5",
       100,
+      "RECETA_1",
       [
         createLeftoverCredit({ category: "TABLAS", quantity: 10, value: 10000 }),
         createLeftoverCredit({ category: "TELAS", quantity: 7, value: 7000 })
@@ -30,7 +33,7 @@ describe("app-data", () => {
   });
 
   it("never reduces effective recipe materials below zero with pending leftovers", () => {
-    const preview = calculateTicketPreview([], "T5", 100, [
+    const preview = calculateTicketPreview([], "T5", 100, "RECETA_1", [
       createLeftoverCredit({ category: "TABLAS", quantity: 100, value: 100000 }),
       createLeftoverCredit({ category: "TELAS", quantity: 100, value: 100000 })
     ]);
@@ -44,6 +47,17 @@ describe("app-data", () => {
 
     expect(preview.craftingTaxUnit).toBe(0);
     expect(preview.craftingTaxTotal).toBe(0);
+  });
+
+  it("defines recipe 2 as the default 7 staff recipe with 50 cloths", () => {
+    expect(ticketRecipes.RECETA_2.staffQuantity).toBe(7);
+    expect(ticketRecipes.RECETA_2.materials).toEqual([
+      { category: "TABLAS", quantity: 83 },
+      { category: "TELAS", quantity: 50 },
+      { category: "ARTEFACTOS", quantity: 7 }
+    ]);
+    expect(getDefaultFilledDiariesQuantity("T5", "RECETA_2")).toBe(22);
+    expect(getRecipeFocusCost("RECETA_2")).toBe(7035);
   });
 
   it("uses the most recent closed ticket tax across tiers", () => {
@@ -73,7 +87,7 @@ describe("app-data", () => {
       })
     ];
 
-    expect(getDefaultFilledDiariesQuantity("T6")).toBe(14);
+    expect(getDefaultFilledDiariesQuantity("T6", "RECETA_1")).toBe(14);
     expect(getDefaultFilledDiariesDiscount(tickets, "T6")).toBe(3500);
     expect(getDefaultFilledDiariesDiscount(tickets, "T7")).toBe(0);
   });

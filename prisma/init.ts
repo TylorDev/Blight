@@ -35,8 +35,10 @@ async function main() {
       "id" TEXT NOT NULL PRIMARY KEY,
       "tier" TEXT NOT NULL,
       "status" TEXT NOT NULL DEFAULT 'ABIERTO',
+      "recipeId" TEXT NOT NULL DEFAULT 'RECETA_1',
       "tax" REAL NOT NULL DEFAULT 1,
       "staffQuantity" INTEGER NOT NULL DEFAULT 6,
+      "focusCost" INTEGER NOT NULL DEFAULT 6030,
       "craftingTax" REAL NOT NULL DEFAULT 0,
       "materialTotal" REAL NOT NULL DEFAULT 0,
       "filledDiariesQuantity" INTEGER NOT NULL DEFAULT 0,
@@ -53,7 +55,9 @@ async function main() {
     );
   `);
   await addColumnIfMissing("FabricationTicket", "tax", "REAL NOT NULL DEFAULT 1");
+  await addColumnIfMissing("FabricationTicket", "recipeId", "TEXT NOT NULL DEFAULT 'RECETA_1'");
   await addColumnIfMissing("FabricationTicket", "staffQuantity", "INTEGER NOT NULL DEFAULT 6");
+  await addColumnIfMissing("FabricationTicket", "focusCost", "INTEGER NOT NULL DEFAULT 6030");
   await addColumnIfMissing("FabricationTicket", "craftingTax", "REAL NOT NULL DEFAULT 0");
   await addColumnIfMissing("FabricationTicket", "materialTotal", "REAL NOT NULL DEFAULT 0");
   await addColumnIfMissing("FabricationTicket", "filledDiariesQuantity", "INTEGER NOT NULL DEFAULT 0");

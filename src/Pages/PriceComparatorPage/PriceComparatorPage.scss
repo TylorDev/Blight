@@ -1,0 +1,198 @@
+.price-comparator {
+  display: grid;
+  gap: 12px;
+}
+
+.price-comparator__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(9, 9, 11, 0.78);
+}
+
+.price-comparator__templates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(17, 17, 19, 0.68);
+
+  > span {
+    color: #71717a;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+}
+
+.price-comparator__template-quantity {
+  min-width: 150px;
+
+  input {
+    min-height: 36px;
+  }
+}
+
+.price-comparator__table-wrap {
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  background: rgba(9, 9, 11, 0.78);
+  overflow-x: auto;
+}
+
+.price-comparator__table {
+  --market-count: 5;
+  display: grid;
+  min-width: 1120px;
+}
+
+.price-comparator__table--advanced {
+  min-width: 1680px;
+}
+
+.price-comparator__row {
+  display: grid;
+  grid-template-columns: minmax(132px, 1.1fr) repeat(var(--market-count), minmax(128px, 0.8fr)) minmax(280px, 1.8fr) 48px;
+  gap: 10px;
+  align-items: center;
+  min-height: 58px;
+  border-bottom: 1px solid #18181b;
+  padding: 8px 12px;
+  color: #e4e4e7;
+
+  &:last-child {
+    border-bottom: 0;
+  }
+
+  > strong {
+    font-size: 13px;
+  }
+}
+
+.price-comparator__table--advanced .price-comparator__row {
+  grid-template-columns: minmax(132px, 0.9fr) repeat(var(--market-count), minmax(230px, 1fr)) minmax(300px, 1.35fr) 48px;
+}
+
+.price-comparator__row--head {
+  min-height: 38px;
+  background: #111113;
+  color: #71717a;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.price-comparator__market-head {
+  display: grid;
+  gap: 5px;
+
+  small {
+    display: grid;
+    grid-template-columns: 1fr 0.72fr 0.72fr;
+    gap: 6px;
+    color: #52525b;
+    font-size: 10px;
+  }
+}
+
+.price-comparator__price {
+  display: block;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  background: #09090b;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
+
+  input {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    text-align: right;
+  }
+}
+
+.price-comparator__advanced-price {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(64px, 0.72fr) minmax(64px, 0.72fr);
+  gap: 6px;
+  align-items: center;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  padding: 5px;
+  background: #09090b;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
+
+  input {
+    width: 100%;
+    min-height: 32px;
+    text-align: right;
+  }
+
+  strong {
+    color: #f4f4f5;
+    font-size: 12px;
+    text-align: right;
+    white-space: nowrap;
+  }
+}
+
+.price-comparator__price--best {
+  border-color: #22c55e;
+  background:
+    linear-gradient(90deg, rgba(34, 197, 94, 0.2), transparent),
+    #09090b;
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.28);
+}
+
+.price-comparator__price--second {
+  border-color: #eab308;
+  background:
+    linear-gradient(90deg, rgba(234, 179, 8, 0.16), transparent),
+    #09090b;
+}
+
+.price-comparator__result {
+  color: #d4d4d8;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.price-comparator__result--compared {
+  color: #bbf7d0;
+}
+
+.price-comparator__result--insufficient_data,
+.price-comparator__result--all_equal,
+.price-comparator__result--near_equal {
+  color: #a1a1aa;
+}
+
+.price-comparator__remove {
+  width: 38px;
+  padding: 0;
+
+  svg {
+    color: #fca5a5;
+  }
+}
+
+@media (max-width: 1080px) {
+  .price-comparator__toolbar {
+    align-items: stretch;
+  }
+
+  .price-comparator__toolbar .field {
+    min-width: 180px;
+  }
+}

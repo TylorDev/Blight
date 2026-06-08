@@ -35,20 +35,6 @@
   }
 }
 
-.staff-production-fields {
-  display: grid;
-  gap: 10px;
-  border: 1px solid #27272a;
-  border-radius: 8px;
-  padding: 12px;
-  background: #09090b;
-
-  > strong {
-    color: #f4f4f5;
-    font-size: 13px;
-  }
-}
-
 .pending-box {
   display: grid;
   gap: 8px;

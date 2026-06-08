@@ -502,6 +502,12 @@ h2 {
   gap: 8px;
 }
 
+.ticket-dialog__recipe-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .ticket-tier-option {
   --ticket-tier-color: #71717a;
   display: grid;
@@ -535,6 +541,45 @@ h2 {
 
   strong {
     font-size: 13px;
+  }
+}
+
+.ticket-recipe-option {
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  padding: 10px;
+  background: #111113;
+  color: #f4f4f5;
+  text-align: left;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    transform 140ms ease;
+
+  &:hover {
+    border-color: #60a5fa;
+    background: #18181b;
+    transform: translateY(-1px);
+  }
+
+  &[aria-pressed="true"] {
+    border-color: #60a5fa;
+    background:
+      linear-gradient(90deg, color-mix(in srgb, #60a5fa 18%, transparent), transparent),
+      #18181b;
+  }
+
+  strong {
+    font-size: 13px;
+  }
+
+  span {
+    color: #a1a1aa;
+    font-size: 12px;
+    line-height: 1.35;
   }
 }
 

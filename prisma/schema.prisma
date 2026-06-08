@@ -96,8 +96,10 @@ model FabricationTicket {
   id              String              @id @default(cuid())
   tier            Tier
   status          TicketStatus        @default(ABIERTO)
+  recipeId        String              @default("RECETA_1")
   tax             Float               @default(1)
   staffQuantity   Int                 @default(6)
+  focusCost       Int                 @default(6030)
   craftingTax     Float               @default(0)
   materialTotal   Float               @default(0)
   filledDiariesQuantity Int           @default(0)

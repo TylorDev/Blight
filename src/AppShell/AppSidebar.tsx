@@ -1,4 +1,4 @@
-import { Archive, Factory, Package, ShoppingBasket } from "lucide-react";
+import { Archive, Factory, Package, Scale, ShoppingBasket } from "lucide-react";
 import type { ReactNode } from "react";
 import { NavLink } from "react-router";
 import "./AppSidebar.scss";
@@ -17,6 +17,7 @@ export function AppSidebar() {
         <SidebarLink icon={<Archive />} label="Stock" to="/Stock" />
         <SidebarLink icon={<Factory />} label="Tickets" to="/Ticket" />
         <SidebarLink icon={<ShoppingBasket />} label="Compras" to="/Buy" />
+        <SidebarLink icon={<Scale />} label="Comparador" to="/PriceComparator" />
         <SidebarLink icon={<Package />} label="Market" to="/Market" />
       </nav>
     </aside>

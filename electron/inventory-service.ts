@@ -19,6 +19,7 @@ import type {
   FabricationTicketView,
   LeftoverCreditView,
   PurchaseInvoiceView,
+  RecipeId,
   SellStaffStockInput,
   StaffStockItemView,
   StaffStockLotView,
@@ -40,7 +41,7 @@ const staffQualities = [
   StaffQuality.SOBRESALIENTE,
   StaffQuality.OBRA_MAESTRA
 ];
-const staffQuantity = 6;
+const focusPerStaff = 1005;
 const craftingTaxBase = 10.08;
 const craftingTaxMultipliers: Record<Tier, number> = {
   [Tier.T5]: 1,
@@ -49,31 +50,43 @@ const craftingTaxMultipliers: Record<Tier, number> = {
   [Tier.T8]: 1.2729
 };
 
-const recipe: Record<Tier, Array<{ category: StockCategory; quantity: number }>> = {
-  [Tier.T5]: [
-    { category: StockCategory.TABLAS, quantity: 73 },
-    { category: StockCategory.TELAS, quantity: 44 },
-    { category: StockCategory.ARTEFACTOS, quantity: 6 },
-    { category: StockCategory.DIARIOS_VACIOS, quantity: 19 }
-  ],
-  [Tier.T6]: [
-    { category: StockCategory.TABLAS, quantity: 73 },
-    { category: StockCategory.TELAS, quantity: 44 },
-    { category: StockCategory.ARTEFACTOS, quantity: 6 },
-    { category: StockCategory.DIARIOS_VACIOS, quantity: 14 }
-  ],
-  [Tier.T7]: [
-    { category: StockCategory.TABLAS, quantity: 73 },
-    { category: StockCategory.TELAS, quantity: 44 },
-    { category: StockCategory.ARTEFACTOS, quantity: 6 },
-    { category: StockCategory.DIARIOS_VACIOS, quantity: 8 }
-  ],
-  [Tier.T8]: [
-    { category: StockCategory.TABLAS, quantity: 73 },
-    { category: StockCategory.TELAS, quantity: 44 },
-    { category: StockCategory.ARTEFACTOS, quantity: 6 },
-    { category: StockCategory.DIARIOS_VACIOS, quantity: 4 }
-  ]
+const defaultRecipeId: RecipeId = "RECETA_2";
+const recipes: Record<
+  RecipeId,
+  {
+    staffQuantity: number;
+    materials: Array<{ category: StockCategory; quantity: number }>;
+    diaryByTier: Record<Tier, number>;
+  }
+> = {
+  RECETA_1: {
+    staffQuantity: 6,
+    materials: [
+      { category: StockCategory.TABLAS, quantity: 73 },
+      { category: StockCategory.TELAS, quantity: 44 },
+      { category: StockCategory.ARTEFACTOS, quantity: 6 }
+    ],
+    diaryByTier: {
+      [Tier.T5]: 19,
+      [Tier.T6]: 14,
+      [Tier.T7]: 8,
+      [Tier.T8]: 4
+    }
+  },
+  RECETA_2: {
+    staffQuantity: 7,
+    materials: [
+      { category: StockCategory.TABLAS, quantity: 83 },
+      { category: StockCategory.TELAS, quantity: 50 },
+      { category: StockCategory.ARTEFACTOS, quantity: 7 }
+    ],
+    diaryByTier: {
+      [Tier.T5]: 22,
+      [Tier.T6]: 16,
+      [Tier.T7]: 10,
+      [Tier.T8]: 5
+    }
+  }
 };
 
 export function createInventoryService(prisma: PrismaClient) {
@@ -108,8 +121,10 @@ export function createInventoryService(prisma: PrismaClient) {
       "id" TEXT NOT NULL PRIMARY KEY,
       "tier" TEXT NOT NULL,
       "status" TEXT NOT NULL DEFAULT 'ABIERTO',
+      "recipeId" TEXT NOT NULL DEFAULT 'RECETA_1',
       "tax" REAL NOT NULL DEFAULT 1,
       "staffQuantity" INTEGER NOT NULL DEFAULT 6,
+      "focusCost" INTEGER NOT NULL DEFAULT 6030,
       "craftingTax" REAL NOT NULL DEFAULT 0,
       "materialTotal" REAL NOT NULL DEFAULT 0,
       "investmentTotal" REAL NOT NULL DEFAULT 0,
@@ -120,7 +135,9 @@ export function createInventoryService(prisma: PrismaClient) {
   `);
 
     await addColumnIfMissing(prisma, "FabricationTicket", "tax", "REAL NOT NULL DEFAULT 1");
+    await addColumnIfMissing(prisma, "FabricationTicket", "recipeId", "TEXT NOT NULL DEFAULT 'RECETA_1'");
     await addColumnIfMissing(prisma, "FabricationTicket", "staffQuantity", "INTEGER NOT NULL DEFAULT 6");
+    await addColumnIfMissing(prisma, "FabricationTicket", "focusCost", "INTEGER NOT NULL DEFAULT 6030");
     await addColumnIfMissing(prisma, "FabricationTicket", "craftingTax", "REAL NOT NULL DEFAULT 0");
     await addColumnIfMissing(prisma, "FabricationTicket", "materialTotal", "REAL NOT NULL DEFAULT 0");
     await addColumnIfMissing(prisma, "FabricationTicket", "filledDiariesQuantity", "INTEGER NOT NULL DEFAULT 0");
@@ -548,6 +565,9 @@ export function createInventoryService(prisma: PrismaClient) {
     if (input.tax < 1 || input.tax > 1000) {
       throw new Error("Tax debe estar entre 1 y 1000.");
     }
+    const recipeId = normalizeRecipeId(input.recipeId);
+    const selectedRecipe = recipes[recipeId];
+    const focusCost = calculateFocusCost(selectedRecipe.staffQuantity);
 
     const ticket = await prisma.$transaction(async (tx) => {
       const pendingLeftoverCredits = await tx.ticketLeftoverCredit.findMany({
@@ -558,9 +578,11 @@ export function createInventoryService(prisma: PrismaClient) {
       const createdTicket = await tx.fabricationTicket.create({
         data: {
           tier: input.tier,
+          recipeId,
           tax: input.tax,
-          staffQuantity,
-          craftingTax: calculateCraftingTax(input.tier, input.tax),
+          staffQuantity: selectedRecipe.staffQuantity,
+          focusCost,
+          craftingTax: calculateCraftingTax(input.tier, input.tax, selectedRecipe.staffQuantity),
           appliedLeftoverDiscount
         },
         include: { consumptions: true, appliedLeftoverCredits: true, producedStaffs: true }
@@ -699,9 +721,10 @@ export function createInventoryService(prisma: PrismaClient) {
       }
 
       const producedStaffs = normalizeProducedStaffInput(input.producedStaffs, ticket.staffQuantity);
-      const materials = getEffectiveRecipe(ticket.tier, ticket.appliedLeftoverCredits);
-      const tablesRequired = getRequiredQuantity(ticket.tier, StockCategory.TABLAS);
-      const clothsRequired = getRequiredQuantity(ticket.tier, StockCategory.TELAS);
+      const recipeId = getTicketRecipeId(ticket);
+      const materials = getEffectiveRecipe(recipeId, ticket.tier, ticket.appliedLeftoverCredits);
+      const tablesRequired = getRequiredQuantity(recipeId, ticket.tier, StockCategory.TABLAS);
+      const clothsRequired = getRequiredQuantity(recipeId, ticket.tier, StockCategory.TELAS);
       if (input.leftoverTablesQuantity > tablesRequired || input.leftoverClothsQuantity > clothsRequired) {
         throw new Error("Las sobras no pueden exceder la receta del ticket.");
       }
@@ -1030,8 +1053,10 @@ function toTicketView(ticket: {
   id: string;
   tier: Tier;
   status: TicketStatus;
+  recipeId?: string | null;
   tax: number;
   staffQuantity: number;
+  focusCost?: number | null;
   craftingTax: number;
   materialTotal: number;
   filledDiariesQuantity: number;
@@ -1073,12 +1098,15 @@ function toTicketView(ticket: {
     createdAt: Date;
   }>;
 }): FabricationTicketView {
+  const recipeId = getTicketRecipeId(ticket);
   return {
     id: ticket.id,
     tier: ticket.tier,
     status: ticket.status,
+    recipeId,
     tax: ticket.tax,
     staffQuantity: ticket.staffQuantity,
+    focusCost: ticket.focusCost ?? calculateFocusCost(ticket.staffQuantity),
     craftingTax: ticket.craftingTax,
     materialTotal: ticket.materialTotal,
     filledDiariesQuantity: ticket.filledDiariesQuantity,
@@ -1198,8 +1226,28 @@ async function backfillPurchaseInvoices(prisma: PrismaClient) {
   }
 }
 
-function calculateCraftingTax(tier: Tier, tax: number) {
+function calculateCraftingTax(tier: Tier, tax: number, staffQuantity: number) {
   return tax * craftingTaxBase * craftingTaxMultipliers[tier] * staffQuantity;
+}
+
+function calculateFocusCost(staffQuantity: number) {
+  return staffQuantity * focusPerStaff;
+}
+
+function normalizeRecipeId(recipeId: string | null | undefined): RecipeId {
+  if (recipeId === "RECETA_1" || recipeId === "RECETA_2") {
+    return recipeId;
+  }
+
+  return defaultRecipeId;
+}
+
+function getTicketRecipeId(ticket: { recipeId?: string | null; staffQuantity: number }): RecipeId {
+  if (ticket.recipeId === "RECETA_1" || ticket.recipeId === "RECETA_2") {
+    return ticket.recipeId;
+  }
+
+  return ticket.staffQuantity === recipes.RECETA_1.staffQuantity ? "RECETA_1" : "RECETA_2";
 }
 
 function validateCloseTicketInput(input: CloseTicketInput) {
@@ -1291,11 +1339,12 @@ function normalizePurchaseVendor(vendor: PurchaseVendor | undefined) {
   return vendor;
 }
 
-function getRequiredQuantity(tier: Tier, category: StockCategory) {
-  return recipe[tier].find((material) => material.category === category)?.quantity ?? 0;
+function getRequiredQuantity(recipeId: RecipeId, tier: Tier, category: StockCategory) {
+  return getRecipe(recipeId, tier).find((material) => material.category === category)?.quantity ?? 0;
 }
 
 function getEffectiveRecipe(
+  recipeId: RecipeId,
   tier: Tier,
   appliedLeftoverCredits: Array<{ category: StockCategory; quantity: number }>
 ) {
@@ -1312,7 +1361,7 @@ function getEffectiveRecipe(
     }
   );
 
-  return recipe[tier].map((material) => {
+  return getRecipe(recipeId, tier).map((material) => {
     if (material.category !== StockCategory.TABLAS && material.category !== StockCategory.TELAS) {
       return material;
     }
@@ -1322,6 +1371,14 @@ function getEffectiveRecipe(
       quantity: Math.max(0, material.quantity - leftoverQuantities[material.category])
     };
   });
+}
+
+function getRecipe(recipeId: RecipeId, tier: Tier) {
+  const recipe = recipes[recipeId];
+  return [
+    ...recipe.materials,
+    { category: StockCategory.DIARIOS_VACIOS, quantity: recipe.diaryByTier[tier] }
+  ];
 }
 
 async function consumeStaffStockLots(

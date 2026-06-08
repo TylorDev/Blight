@@ -17,12 +17,12 @@ import { SellStaffDialog } from "./components/SellStaffDialog";
 import { StaffMetric } from "./components/StaffMetric";
 import { StaffMovementTable } from "./components/StaffMovementTable";
 import { StaffStockTable } from "./components/StaffStockTable";
-import "./StaffStockTab.scss";
+import "./MarketPage.scss";
 
 const ALL_TICKETS_FILTER = "TODOS";
 const MANUAL_TICKET_FILTER = "SIN_TICKET";
 
-export function StaffStockTab() {
+export function MarketPage() {
   const [ticketFilter, setTicketFilter] = useState(ALL_TICKETS_FILTER);
   const stock = useStaffStockStore((state) => state.stock);
   const lots = useStaffStockStore((state) => state.lots);

@@ -14,6 +14,7 @@ export type StaffQualityView = StaffQuality;
 export type StaffMovementTypeView = StaffMovementType;
 export type PurchaseInvoiceTypeView = PurchaseInvoiceType;
 export type PurchaseVendorView = PurchaseVendor;
+export type RecipeId = "RECETA_1" | "RECETA_2";
 
 export interface StockItemView {
   id: string;
@@ -46,8 +47,10 @@ export interface FabricationTicketView {
   id: string;
   tier: AppTier;
   status: TicketStatus;
+  recipeId: RecipeId;
   tax: number;
   staffQuantity: number;
+  focusCost: number;
   craftingTax: number;
   materialTotal: number;
   filledDiariesQuantity: number;
@@ -154,6 +157,7 @@ export interface CreateBulkPurchaseInput {
 export interface CreateTicketInput {
   tier: AppTier;
   tax: number;
+  recipeId?: RecipeId;
 }
 
 export interface CloseTicketInput {

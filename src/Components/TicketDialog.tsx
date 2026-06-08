@@ -1,14 +1,16 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { BadgeDollarSign, Factory, Loader2, Plus, Sparkles, WandSparkles, X } from "lucide-react";
+import { BadgeDollarSign, Factory, Gauge, Loader2, Plus, Sparkles, WandSparkles, X } from "lucide-react";
 import { CSSProperties, FormEvent, useEffect, useMemo, useState } from "react";
-import type { AppTier, LeftoverCreditView } from "../../electron/types";
+import type { AppTier, LeftoverCreditView, RecipeId } from "../../electron/types";
 import {
   calculateTicketPreview,
   categoryLabels,
+  defaultRecipeId,
   formatCurrency,
   formatNumber,
   getDefaultTicketTax,
-  staffQuantity,
+  recipeIds,
+  ticketRecipes,
   tierLabels,
   tiers
 } from "../app-data";
@@ -30,6 +32,7 @@ const tierColors: Record<AppTier, string> = {
 export function TicketDialog() {
   const [open, setOpen] = useState(false);
   const [tier, setTier] = useState<AppTier>("T5");
+  const [recipeId, setRecipeId] = useState<RecipeId>(defaultRecipeId);
   const [tax, setTax] = useState("");
   const [pendingLeftovers, setPendingLeftovers] = useState<LeftoverCreditView[]>([]);
   const [saving, setSaving] = useState(false);
@@ -42,8 +45,8 @@ export function TicketDialog() {
   const defaultTax = useMemo(() => getDefaultTicketTax(closedTickets), [closedTickets]);
   const effectiveTax = tax === "" ? defaultTax : parseThousands(tax);
   const preview = useMemo(
-    () => calculateTicketPreview(stock, tier, effectiveTax, pendingLeftovers),
-    [effectiveTax, pendingLeftovers, stock, tier]
+    () => calculateTicketPreview(stock, tier, effectiveTax, recipeId, pendingLeftovers),
+    [effectiveTax, pendingLeftovers, recipeId, stock, tier]
   );
   const pendingLeftoverTotal = pendingLeftovers.reduce((total, credit) => total + credit.value, 0);
 
@@ -66,7 +69,7 @@ export function TicketDialog() {
     setSaving(true);
     setError(null);
     try {
-      await createTicket({ tier, tax: effectiveTax });
+      await createTicket({ tier, tax: effectiveTax, recipeId });
       setTax("");
       setOpen(false);
     } catch (currentError) {
@@ -110,6 +113,31 @@ export function TicketDialog() {
                 ))}
               </div>
             </section>
+            <section className="ticket-dialog__section">
+              <div className="ticket-dialog__section-head">
+                <strong>Receta</strong>
+                <span>Seleccion activa: {ticketRecipes[recipeId].label}</span>
+              </div>
+              <div className="ticket-dialog__recipe-grid">
+                {recipeIds.map((currentRecipeId) => {
+                  const recipe = ticketRecipes[currentRecipeId];
+                  const summary = `${recipe.materials[0].quantity} tablas, ${recipe.materials[1].quantity} telas, ${recipe.materials[2].quantity} artefactos`;
+
+                  return (
+                    <button
+                      aria-pressed={recipeId === currentRecipeId}
+                      className="ticket-recipe-option"
+                      key={currentRecipeId}
+                      onClick={() => setRecipeId(currentRecipeId)}
+                      type="button"
+                    >
+                      <strong>{recipe.label}</strong>
+                      <span>{summary}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
             <div className="ticket-dialog__inputs">
               <label className="field ticket-dialog__field">
                 <span>
@@ -131,7 +159,14 @@ export function TicketDialog() {
                   <WandSparkles />
                   Cantidad Bastones Total
                 </span>
-                <input value={String(staffQuantity)} readOnly />
+                <input value={String(preview.staffQuantity)} readOnly />
+              </label>
+              <label className="field ticket-dialog__field">
+                <span>
+                  <Gauge />
+                  Foco
+                </span>
+                <input value={formatNumber(preview.focusCost)} readOnly />
               </label>
             </div>
             {loadingLeftovers ? <p className="modal-copy">Buscando sobras disponibles...</p> : null}
@@ -158,7 +193,7 @@ export function TicketDialog() {
                 <strong>Receta efectiva</strong>
                 <span>Stock y sobras ya considerados</span>
               </div>
-              <Recipe tier={tier} leftoverCredits={pendingLeftovers} />
+              <Recipe tier={tier} recipeId={recipeId} leftoverCredits={pendingLeftovers} />
             </section>
             <TicketPreview preview={preview} />
             {error ? <p className="form-error">{error}</p> : null}

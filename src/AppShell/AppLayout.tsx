@@ -4,7 +4,8 @@ import { BulkPurchaseDialog, ClearStockDialog, Metric, PurchaseDialog, TicketDia
 import { formatCurrency, formatNumber } from "../app-data";
 import { BuyPage } from "../Pages/BuyPage/BuyPage";
 import { HistoryTab } from "../Pages/HistoryTab/HistoryTab";
-import { StaffStockTab } from "../Pages/StaffStockTab/StaffStockTab";
+import { PriceComparatorPage } from "../Pages/PriceComparatorPage/PriceComparatorPage";
+import { MarketPage } from "../Pages/MarketPage/MarketPage";
 import { StockTab } from "../Pages/StockTab/StockTab";
 import { TicketTab } from "../Pages/TicketTab/TicketTab";
 import { AppNotices } from "./AppNotices";
@@ -88,6 +89,14 @@ export function AppLayout({
             }
           />
           <Route
+            path="/PriceComparator"
+            element={
+              <PageShell eyebrow="Mercados" title="Comparador de precios">
+                <PriceComparatorPage />
+              </PageShell>
+            }
+          />
+          <Route
             path="/Market"
             element={
               <PageShell eyebrow="Blight Market" title="Operacion de bastones">
@@ -95,7 +104,7 @@ export function AppLayout({
                   <Metric icon={<History />} label="Fabricaciones" value={String(closedTicketsCount)} />
                   <Metric icon={<Package />} label="Bastones en stock" value={formatNumber(staffQuantity)} />
                 </section>
-                <StaffStockTab />
+                <MarketPage />
               </PageShell>
             }
           />

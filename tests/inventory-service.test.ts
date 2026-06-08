@@ -297,7 +297,7 @@ describe("clearStock", () => {
 
   it("does not delete tickets or stock movements", async () => {
     await service.createPurchase({ category: StockCategory.TABLAS, tier: Tier.T5, quantity: 10, total: 1000 });
-    await service.createTicket({ tier: Tier.T5, tax: 100 });
+    await createRecipe1Ticket(Tier.T5);
 
     await service.clearStock();
 
@@ -328,9 +328,11 @@ describe("tickets", () => {
     [Tier.T7, 465 * 10.08 * 1.1578 * 6],
     [Tier.T8, 465 * 10.08 * 1.2729 * 6]
   ])("calculates crafting tax for %s", async (tier, craftingTax) => {
-    const ticket = await service.createTicket({ tier, tax: 465 });
+    const ticket = await createRecipe1Ticket(tier, 465);
 
+    expect(ticket.recipeId).toBe("RECETA_1");
     expect(ticket.staffQuantity).toBe(6);
+    expect(ticket.focusCost).toBe(6030);
     expect(ticket.craftingTax).toBeCloseTo(craftingTax, 4);
     expect(ticket.materialTotal).toBe(0);
     expect(ticket.investmentTotal).toBe(0);
@@ -338,7 +340,7 @@ describe("tickets", () => {
   });
 
   it("creates open tickets with serializable dates and no consumptions", async () => {
-    const ticket = await service.createTicket({ tier: Tier.T7, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T7);
 
     expect(ticket.tier).toBe(Tier.T7);
     expect(ticket.status).toBe("ABIERTO");
@@ -347,9 +349,47 @@ describe("tickets", () => {
     expect(new Date(ticket.openedAt).toString()).not.toBe("Invalid Date");
   });
 
+  it("creates default tickets with recipe 2 staff and focus", async () => {
+    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+
+    expect(ticket.recipeId).toBe("RECETA_2");
+    expect(ticket.staffQuantity).toBe(7);
+    expect(ticket.focusCost).toBe(7035);
+    expect(ticket.craftingTax).toBeCloseTo(7056, 4);
+  });
+
+  it("closes a default recipe 2 ticket with 50 cloths and 7 produced staff", async () => {
+    await seedRecipeStock(Tier.T5, 100, 1000);
+
+    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const result = await service.closeTicket(
+      closeInput(ticket.id, {
+        producedStaffs: [{ quality: StaffQuality.NORMAL, quantity: 7 }]
+      })
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.ticket).toMatchObject({
+      recipeId: "RECETA_2",
+      staffQuantity: 7,
+      focusCost: 7035
+    });
+    expect(result.ticket?.consumptions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ category: StockCategory.TABLAS, quantity: 83 }),
+        expect.objectContaining({ category: StockCategory.TELAS, quantity: 50 }),
+        expect.objectContaining({ category: StockCategory.ARTEFACTOS, quantity: 7 }),
+        expect.objectContaining({ category: StockCategory.DIARIOS_VACIOS, quantity: 22 })
+      ])
+    );
+    expect(result.ticket?.producedStaffs).toEqual([
+      expect.objectContaining({ quality: StaffQuality.NORMAL, quantity: 7 })
+    ]);
+  });
+
   it("deletes an open ticket without mutating stock or history", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
-    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T5);
     const stockBeforeDelete = await service.listStock();
 
     await service.deleteOpenTicket(ticket.id);
@@ -365,7 +405,7 @@ describe("tickets", () => {
 
   it("rejects deleting a missing open ticket without mutating data", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
-    await service.createTicket({ tier: Tier.T5, tax: 100 });
+    await createRecipe1Ticket(Tier.T5);
     const stockBeforeDelete = await service.listStock();
     const openTicketsBeforeDelete = await service.listOpenTickets();
 
@@ -378,7 +418,7 @@ describe("tickets", () => {
 
   it("rejects deleting a closed ticket", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
-    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T5);
     await service.closeTicket(closeInput(ticket.id));
 
     await expect(service.deleteOpenTicket(ticket.id)).rejects.toThrow("cerrado");
@@ -387,14 +427,14 @@ describe("tickets", () => {
 
   it("deletes leftovers applied to an open ticket", async () => {
     await seedRecipeStock(Tier.T5, 220, 1000);
-    const sourceTicket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const sourceTicket = await createRecipe1Ticket(Tier.T5);
     await service.closeTicket(
       closeInput(sourceTicket.id, {
         leftoverTablesQuantity: 12,
         leftoverClothsQuantity: 7
       })
     );
-    const openTicket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const openTicket = await createRecipe1Ticket(Tier.T5);
 
     expect(openTicket.appliedLeftoverCredits).toHaveLength(2);
 
@@ -406,7 +446,7 @@ describe("tickets", () => {
   });
 
   it("blocks close when stock is missing and does not mutate stock", async () => {
-    const ticket = await service.createTicket({ tier: Tier.T6, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T6);
     const result = await service.closeTicket(closeInput(ticket.id));
     const stock = await service.listStock();
     const ticketAfterCloseAttempt = await prisma.fabricationTicket.findUniqueOrThrow({
@@ -431,7 +471,7 @@ describe("tickets", () => {
   it("closes a T5 ticket, discounts recipe stock, and records consumption history", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
 
-    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T5);
     const result = await service.closeTicket(closeInput(ticket.id));
     const stock = await service.listStock();
     const consumptions = await prisma.ticketConsumption.findMany({ where: { ticketId: ticket.id } });
@@ -479,7 +519,7 @@ describe("tickets", () => {
 
   it("rejects closing when produced staff quantities do not match staff quantity", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
-    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T5);
 
     await expect(
       service.closeTicket(
@@ -494,7 +534,7 @@ describe("tickets", () => {
 
   it("rejects discounts that would leave negative investment without mutating close state", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
-    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T5);
     const stockBeforeClose = await service.listStock();
 
     await expect(
@@ -513,7 +553,7 @@ describe("tickets", () => {
 
   it("normalizes multiple produced staff qualities when closing a ticket", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
-    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T5);
 
     const result = await service.closeTicket(
       closeInput(ticket.id, {
@@ -545,7 +585,7 @@ describe("tickets", () => {
 
   it("aggregates duplicate produced staff qualities before persisting", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
-    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T5);
 
     const result = await service.closeTicket(
       closeInput(ticket.id, {
@@ -568,13 +608,13 @@ describe("tickets", () => {
 
   it("keeps produced staff lots separated by source ticket", async () => {
     await seedRecipeStock(Tier.T5, 220, 1000);
-    const firstTicket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const firstTicket = await createRecipe1Ticket(Tier.T5);
     await service.closeTicket(
       closeInput(firstTicket.id, {
         producedStaffs: [{ quality: StaffQuality.BUENA, quantity: 6 }]
       })
     );
-    const secondTicket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const secondTicket = await createRecipe1Ticket(Tier.T5);
     await service.closeTicket(
       closeInput(secondTicket.id, {
         producedStaffs: [{ quality: StaffQuality.BUENA, quantity: 6 }]
@@ -590,7 +630,7 @@ describe("tickets", () => {
 
   it("rejects invalid produced staff quality without mutating close state", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
-    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T5);
     const stockBeforeClose = await service.listStock();
 
     await expect(
@@ -612,7 +652,7 @@ describe("tickets", () => {
 
   it("rejects non-finite produced staff quantities without mutating close state", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
-    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T5);
     const stockBeforeClose = await service.listStock();
 
     await expect(
@@ -634,7 +674,7 @@ describe("tickets", () => {
 
   it("truncates decimal close quantities before persisting", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
-    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T5);
 
     const result = await service.closeTicket(
       closeInput(ticket.id, {
@@ -658,7 +698,7 @@ describe("tickets", () => {
   it("applies filled diary discount to the ticket total", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
 
-    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T5);
     const result = await service.closeTicket(
       closeInput(ticket.id, {
         filledDiariesQuantity: 15,
@@ -676,7 +716,7 @@ describe("tickets", () => {
   it("creates leftover credits without returning leftovers to stock", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
 
-    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T5);
     const result = await service.closeTicket(
       closeInput(ticket.id, {
         leftoverTablesQuantity: 12,
@@ -706,7 +746,7 @@ describe("tickets", () => {
   it("automatically applies pending leftovers to the next ticket of the same tier once", async () => {
     await seedRecipeStock(Tier.T5, 220, 1000);
 
-    const firstTicket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const firstTicket = await createRecipe1Ticket(Tier.T5);
     await service.closeTicket(
       closeInput(firstTicket.id, {
         leftoverTablesQuantity: 12,
@@ -714,11 +754,11 @@ describe("tickets", () => {
       })
     );
 
-    const secondTicket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const secondTicket = await createRecipe1Ticket(Tier.T5);
     const stockBeforeSecondClose = await service.listStock();
     const secondClose = await service.closeTicket(closeInput(secondTicket.id));
     const stockAfterSecondClose = await service.listStock();
-    const thirdTicket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const thirdTicket = await createRecipe1Ticket(Tier.T5);
     const thirdClose = await service.closeTicket(closeInput(thirdTicket.id));
     const appliedCredits = await prisma.ticketLeftoverCredit.findMany({
       where: { appliedToTicketId: secondTicket.id }
@@ -747,7 +787,7 @@ describe("tickets", () => {
   it("uses effective leftover-adjusted quantities when checking missing stock", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
 
-    const firstTicket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const firstTicket = await createRecipe1Ticket(Tier.T5);
     await service.closeTicket(closeInput(firstTicket.id, { leftoverTablesQuantity: 12 }));
     await service.clearStock();
     await service.createPurchase({ category: StockCategory.TABLAS, tier: Tier.T5, quantity: 61, total: 61000 });
@@ -760,7 +800,7 @@ describe("tickets", () => {
       total: 19000
     });
 
-    const secondTicket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const secondTicket = await createRecipe1Ticket(Tier.T5);
     const result = await service.closeTicket(closeInput(secondTicket.id));
 
     expect(result.ok).toBe(true);
@@ -771,10 +811,10 @@ describe("tickets", () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
     await seedRecipeStock(Tier.T6, 100, 1000);
 
-    const firstTicket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const firstTicket = await createRecipe1Ticket(Tier.T5);
     await service.closeTicket(closeInput(firstTicket.id, { leftoverTablesQuantity: 12 }));
 
-    const secondTicket = await service.createTicket({ tier: Tier.T6, tax: 100 });
+    const secondTicket = await createRecipe1Ticket(Tier.T6);
     const secondClose = await service.closeTicket(closeInput(secondTicket.id));
 
     expect(secondClose.ok).toBe(true);
@@ -783,8 +823,8 @@ describe("tickets", () => {
   });
 
   it("lists pending leftover credits for the requested tier ordered by creation date", async () => {
-    const sourceTicket = await service.createTicket({ tier: Tier.T5, tax: 100 });
-    const appliedTicket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const sourceTicket = await createRecipe1Ticket(Tier.T5);
+    const appliedTicket = await createRecipe1Ticket(Tier.T5);
     await prisma.ticketLeftoverCredit.createMany({
       data: [
         {
@@ -833,7 +873,7 @@ describe("tickets", () => {
 
   it("rejects invalid close form values", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
-    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T5);
 
     await expect(service.closeTicket(closeInput(ticket.id, { filledDiariesQuantity: -1 }))).rejects.toThrow("cierre");
     await expect(service.closeTicket(closeInput(ticket.id, { filledDiariesDiscount: -1 }))).rejects.toThrow("cierre");
@@ -854,7 +894,7 @@ describe("tickets", () => {
   ])("uses the correct empty diary quantity for %s", async (tier, diaryQuantity) => {
     await seedRecipeStock(tier, 100, 500);
 
-    const ticket = await service.createTicket({ tier, tax: 100 });
+    const ticket = await createRecipe1Ticket(tier);
     const result = await service.closeTicket(closeInput(ticket.id));
     const diaryConsumption = await prisma.ticketConsumption.findFirstOrThrow({
       where: { ticketId: ticket.id, category: StockCategory.DIARIOS_VACIOS }
@@ -868,7 +908,7 @@ describe("tickets", () => {
   it("does not double-discount when closing an already closed ticket", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
 
-    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T5);
     await service.closeTicket(closeInput(ticket.id));
     const secondClose = await service.closeTicket(closeInput(ticket.id));
     const stock = await service.listStock();
@@ -884,7 +924,7 @@ describe("tickets", () => {
 
   it("lists tickets with ISO dates and included consumptions", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
-    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T5);
     await service.closeTicket(closeInput(ticket.id));
 
     const tickets = await service.listTickets();
@@ -899,7 +939,7 @@ describe("tickets", () => {
 
   it("sells staff stock and records a movement", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
-    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T5);
     await service.closeTicket(closeInput(ticket.id));
 
     const updated = await service.sellStaffStock({
@@ -1091,11 +1131,11 @@ describe("clearHistory", () => {
   it("deletes closed tickets and related history without touching open tickets or stock", async () => {
     await seedRecipeStock(Tier.T5, 220, 1000);
 
-    const firstTicket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const firstTicket = await createRecipe1Ticket(Tier.T5);
     await service.closeTicket(closeInput(firstTicket.id, { leftoverTablesQuantity: 12, leftoverClothsQuantity: 7 }));
-    const secondTicket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const secondTicket = await createRecipe1Ticket(Tier.T5);
     await service.closeTicket(closeInput(secondTicket.id));
-    const openTicket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const openTicket = await createRecipe1Ticket(Tier.T5);
     const stockBeforeClear = await service.listStock();
 
     const history = await service.clearHistory();
@@ -1113,7 +1153,7 @@ describe("clearHistory", () => {
 
   it("unlinks staff production history without deleting staff stock", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
-    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const ticket = await createRecipe1Ticket(Tier.T5);
     await service.closeTicket(closeInput(ticket.id));
 
     await service.clearHistory();
@@ -1127,7 +1167,7 @@ describe("clearHistory", () => {
   });
 
   it("is a no-op when the history is already empty", async () => {
-    const openTicket = await service.createTicket({ tier: Tier.T5, tax: 100 });
+    const openTicket = await createRecipe1Ticket(Tier.T5);
 
     const history = await service.clearHistory();
     const openTickets = await service.listOpenTickets();
@@ -1206,6 +1246,10 @@ function stockItem(
   tier: Tier
 ) {
   return stock.find((item) => item.category === category && item.tier === tier);
+}
+
+function createRecipe1Ticket(tier: Tier, tax = 100) {
+  return service.createTicket({ tier, tax, recipeId: "RECETA_1" });
 }
 
 function closeInput(ticketId: string, overrides: Partial<CloseTicketInput> = {}): CloseTicketInput {
