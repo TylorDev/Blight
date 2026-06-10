@@ -158,6 +158,7 @@ export interface CreateTicketInput {
   tier: AppTier;
   tax: number;
   recipeId?: RecipeId;
+  idPrefix?: "XL";
 }
 
 export interface CloseTicketInput {
@@ -189,6 +190,41 @@ export interface SellStaffStockInput {
   total: number;
 }
 
+export interface TicketAnalizerHistoryManualState {
+  effectiveSaleValueByPower: Record<string, number>;
+  effectiveSaleValueExceptions: Record<string, number>;
+  effectiveTaxPercentages: {
+    saleOrderTaxPercent: number;
+    saleTaxPercent: number;
+  };
+  exceptionInputs: Record<string, string>;
+  quantityDrafts: Record<string, string>;
+  saleInputsByPower: Record<string, string>;
+  saleOrderTaxInput: string;
+  saleTaxInput: string;
+  unitCostDrafts: Record<string, string>;
+}
+
+export interface TicketAnalizerHistorySummary {
+  grossSale: number;
+  netProfit: number;
+  profitBeforeTaxes: number;
+  taxesAndFees: number;
+  totalCost: number;
+  totalQuantity: number;
+}
+
+export interface TicketAnalizerHistoryInput {
+  manualState: TicketAnalizerHistoryManualState;
+  summary: TicketAnalizerHistorySummary;
+  ticketIds: string[];
+}
+
+export interface TicketAnalizerHistoryView extends TicketAnalizerHistoryInput {
+  id: string;
+  createdAt: string;
+}
+
 export interface AppApi {
   listStock: () => Promise<StockItemView[]>;
   clearStock: () => Promise<StockItemView[]>;
@@ -208,4 +244,11 @@ export interface AppApi {
   listStaffMovements: () => Promise<StaffStockMovementView[]>;
   adjustStaffStock: (input: AdjustStaffStockInput) => Promise<StaffStockItemView>;
   sellStaffStock: (input: SellStaffStockInput) => Promise<StaffStockItemView>;
+  saveTicketAnalizerHistory: (input: TicketAnalizerHistoryInput) => Promise<TicketAnalizerHistoryView>;
+  listTicketAnalizerHistory: () => Promise<TicketAnalizerHistoryView[]>;
+  getTicketAnalizerHistory: (id: string) => Promise<TicketAnalizerHistoryView | null>;
+  minimizeWindow: () => Promise<void>;
+  toggleMaximizeWindow: () => Promise<boolean>;
+  closeWindow: () => Promise<void>;
+  isWindowMaximized: () => Promise<boolean>;
 }

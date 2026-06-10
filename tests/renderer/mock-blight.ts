@@ -36,7 +36,14 @@ export function installBlightMock() {
     listStaffStockLots: vi.fn(),
     listStaffMovements: vi.fn(),
     adjustStaffStock: vi.fn(),
-    sellStaffStock: vi.fn()
+    sellStaffStock: vi.fn(),
+    saveTicketAnalizerHistory: vi.fn(() => Promise.resolve(undefined)),
+    listTicketAnalizerHistory: vi.fn(() => Promise.resolve([])),
+    getTicketAnalizerHistory: vi.fn(() => Promise.resolve(null)),
+    minimizeWindow: vi.fn(() => Promise.resolve()),
+    toggleMaximizeWindow: vi.fn(() => Promise.resolve(false)),
+    closeWindow: vi.fn(() => Promise.resolve()),
+    isWindowMaximized: vi.fn(() => Promise.resolve(false))
   };
 
   Object.defineProperty(globalThis, "window", {

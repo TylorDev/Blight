@@ -1,7 +1,13 @@
 .app-frame {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
   min-height: 100vh;
+  padding-top: 42px;
+}
+
+.app-body {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  min-height: calc(100vh - 42px);
 }
 
 .app-shell {
@@ -14,7 +20,7 @@
 }
 
 @media (max-width: 1080px) {
-  .app-frame {
+  .app-body {
     grid-template-columns: 76px minmax(0, 1fr);
   }
 

@@ -10,6 +10,7 @@ import {
   createTicket,
   deleteOpenTicket,
   disconnectPrisma,
+  getTicketAnalizerHistory,
   initializeDatabase,
   listHistory,
   listOpenTickets,
@@ -20,6 +21,8 @@ import {
   listStaffStockLots,
   listStock,
   listTickets,
+  listTicketAnalizerHistory,
+  saveTicketAnalizerHistory,
   sellStaffStock
 } from "./inventory-service";
 import type {
@@ -29,10 +32,12 @@ import type {
   CreateBulkPurchaseInput,
   CreatePurchaseInput,
   CreateTicketInput,
-  SellStaffStockInput
+  SellStaffStockInput,
+  TicketAnalizerHistoryInput
 } from "./types";
 
 const rendererUrl = process.env.ELECTRON_RENDERER_URL;
+const appIconPath = join(__dirname, "../../src/Resources/BlightAppIcon.png");
 
 const consoleLevels: Record<number, "log" | "warn" | "error"> = {
   0: "log",
@@ -48,7 +53,9 @@ function createWindow() {
     minWidth: 980,
     minHeight: 680,
     backgroundColor: "#09090b",
+    frame: false,
     title: "Blight",
+    icon: appIconPath,
     webPreferences: {
       preload: join(__dirname, "../preload/preload.js"),
       contextIsolation: true,
@@ -86,6 +93,10 @@ function createWindow() {
   }
 }
 
+function getWindowFromEvent(event: Electron.IpcMainInvokeEvent) {
+  return BrowserWindow.fromWebContents(event.sender);
+}
+
 app.whenReady().then(async () => {
   await initializeDatabase();
 
@@ -107,6 +118,34 @@ app.whenReady().then(async () => {
   ipcMain.handle("staffStock:listMovements", () => listStaffMovements());
   ipcMain.handle("staffStock:adjust", (_event, input: AdjustStaffStockInput) => adjustStaffStock(input));
   ipcMain.handle("staffStock:sell", (_event, input: SellStaffStockInput) => sellStaffStock(input));
+  ipcMain.handle("ticketAnalizerHistory:save", (_event, input: TicketAnalizerHistoryInput) =>
+    saveTicketAnalizerHistory(input)
+  );
+  ipcMain.handle("ticketAnalizerHistory:list", () => listTicketAnalizerHistory());
+  ipcMain.handle("ticketAnalizerHistory:get", (_event, id: string) => getTicketAnalizerHistory(id));
+  ipcMain.handle("window:minimize", (event) => {
+    getWindowFromEvent(event)?.minimize();
+  });
+  ipcMain.handle("window:toggleMaximize", (event) => {
+    const window = getWindowFromEvent(event);
+    if (!window) {
+      return false;
+    }
+
+    if (window.isMaximized()) {
+      window.unmaximize();
+      return false;
+    }
+
+    window.maximize();
+    return true;
+  });
+  ipcMain.handle("window:close", (event) => {
+    getWindowFromEvent(event)?.close();
+  });
+  ipcMain.handle("window:isMaximized", (event) => {
+    return getWindowFromEvent(event)?.isMaximized() ?? false;
+  });
 
   createWindow();
 

@@ -1,0 +1,93 @@
+.app-titlebar {
+  -webkit-app-region: drag;
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 42px;
+  border-bottom: 1px solid #27272a;
+  background:
+    linear-gradient(90deg, rgba(24, 24, 27, 0.96), rgba(9, 9, 11, 0.98)),
+    #09090b;
+  user-select: none;
+}
+
+.app-titlebar__brand {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 9px;
+  padding: 0 12px;
+
+  img {
+    width: 24px;
+    height: 24px;
+    border: 1px solid #3f3f46;
+    border-radius: 6px;
+    background: #18181b;
+    object-fit: contain;
+    padding: 2px;
+  }
+
+  strong {
+    color: #fafafa;
+    font-size: 13px;
+    line-height: 1;
+  }
+
+  span {
+    overflow: hidden;
+    color: #a1a1aa;
+    font-size: 12px;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &::before {
+      content: "/";
+      margin-right: 9px;
+      color: #52525b;
+    }
+  }
+}
+
+.app-titlebar__controls {
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: stretch;
+  align-self: stretch;
+
+  button {
+    display: inline-grid;
+    width: 46px;
+    height: 100%;
+    place-items: center;
+    border: 0;
+    border-left: 1px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: #a1a1aa;
+    transition:
+      background 120ms ease,
+      color 120ms ease;
+
+    svg {
+      width: 15px;
+      height: 15px;
+    }
+
+    &:hover {
+      background: #18181b;
+      color: #fafafa;
+    }
+  }
+
+  .app-titlebar__close:hover {
+    background: #991b1b;
+    color: #fee2e2;
+  }
+}

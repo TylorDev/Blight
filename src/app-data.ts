@@ -57,6 +57,37 @@ export const staffQualityToneClasses: Record<StaffQualityView, string> = {
   OBRA_MAESTRA: "quality-tone--obra-maestra"
 };
 
+export const staffItemPowerByTierAndQuality: Record<AppTier, Record<StaffQualityView, number>> = {
+  T5: {
+    NORMAL: 1560,
+    BUENA: 1580,
+    NOTABLE: 1600,
+    SOBRESALIENTE: 1620,
+    OBRA_MAESTRA: 1660
+  },
+  T6: {
+    NORMAL: 1580,
+    BUENA: 1600,
+    NOTABLE: 1620,
+    SOBRESALIENTE: 1640,
+    OBRA_MAESTRA: 1680
+  },
+  T7: {
+    NORMAL: 1600,
+    BUENA: 1620,
+    NOTABLE: 1640,
+    SOBRESALIENTE: 1660,
+    OBRA_MAESTRA: 1700
+  },
+  T8: {
+    NORMAL: 1620,
+    BUENA: 1640,
+    NOTABLE: 1660,
+    SOBRESALIENTE: 1680,
+    OBRA_MAESTRA: 1720
+  }
+};
+
 export const staffMovementTypeLabels: Record<StaffMovementTypeView, string> = {
   PRODUCCION: "Produccion",
   AJUSTE: "Ajuste",

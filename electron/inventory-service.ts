@@ -9,6 +9,7 @@ import {
   TicketStatus,
   Tier
 } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import type {
   AdjustStaffStockInput,
   CloseTicketInput,
@@ -24,7 +25,9 @@ import type {
   StaffStockItemView,
   StaffStockLotView,
   StaffStockMovementView,
-  StockItemView
+  StockItemView,
+  TicketAnalizerHistoryInput,
+  TicketAnalizerHistoryView
 } from "./types";
 
 const categories = [
@@ -273,6 +276,19 @@ export function createInventoryService(prisma: PrismaClient) {
   `);
 
     await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "TicketAnalizerHistory" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "ticketKey" TEXT,
+      "ticketIdsJson" TEXT NOT NULL,
+      "manualStateJson" TEXT NOT NULL,
+      "summaryJson" TEXT NOT NULL,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+    await addColumnIfMissing(prisma, "TicketAnalizerHistory", "ticketKey", "TEXT");
+    await backfillTicketAnalizerHistoryKeys(prisma);
+
+    await prisma.$executeRawUnsafe(`
     CREATE UNIQUE INDEX IF NOT EXISTS "StockItem_category_tier_key"
     ON "StockItem"("category", "tier");
   `);
@@ -280,6 +296,11 @@ export function createInventoryService(prisma: PrismaClient) {
     await prisma.$executeRawUnsafe(`
     CREATE UNIQUE INDEX IF NOT EXISTS "StaffStockItem_tier_quality_key"
     ON "StaffStockItem"("tier", "quality");
+  `);
+
+    await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "TicketAnalizerHistory_ticketKey_key"
+    ON "TicketAnalizerHistory"("ticketKey");
   `);
 
     await ensureStockItems();
@@ -575,8 +596,10 @@ export function createInventoryService(prisma: PrismaClient) {
         orderBy: { createdAt: "asc" }
       });
       const appliedLeftoverDiscount = pendingLeftoverCredits.reduce((total, credit) => total + credit.value, 0);
+      const ticketId = input.idPrefix === "XL" ? await getNextXlTicketId(tx) : undefined;
       const createdTicket = await tx.fabricationTicket.create({
         data: {
+          ...(ticketId ? { id: ticketId } : {}),
           tier: input.tier,
           recipeId,
           tax: input.tax,
@@ -914,6 +937,69 @@ export function createInventoryService(prisma: PrismaClient) {
     return result;
   }
 
+  async function saveTicketAnalizerHistory(input: TicketAnalizerHistoryInput): Promise<TicketAnalizerHistoryView> {
+    validateTicketAnalizerHistoryInput(input);
+
+    const ticketIds = normalizeTicketAnalizerHistoryTicketIds(input.ticketIds);
+    const ticketKey = createTicketAnalizerHistoryKey(ticketIds);
+    const id = randomUUID();
+    const now = new Date();
+
+    const existingRows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "TicketAnalizerHistory"
+      WHERE "ticketKey" = ${ticketKey}
+      LIMIT 1
+    `;
+    const existingId = existingRows[0]?.id;
+
+    if (existingId) {
+      await prisma.$executeRaw`
+        UPDATE "TicketAnalizerHistory"
+        SET
+          "ticketIdsJson" = ${JSON.stringify(ticketIds)},
+          "manualStateJson" = ${JSON.stringify(input.manualState)},
+          "summaryJson" = ${JSON.stringify(input.summary)},
+          "createdAt" = ${now}
+        WHERE "id" = ${existingId}
+      `;
+    } else {
+      await prisma.$executeRaw`
+        INSERT INTO "TicketAnalizerHistory" ("id", "ticketKey", "ticketIdsJson", "manualStateJson", "summaryJson", "createdAt")
+        VALUES (${id}, ${ticketKey}, ${JSON.stringify(ticketIds)}, ${JSON.stringify(input.manualState)}, ${JSON.stringify(input.summary)}, ${now})
+      `;
+    }
+
+    return {
+      id: existingId ?? id,
+      createdAt: now.toISOString(),
+      ticketIds,
+      manualState: input.manualState,
+      summary: input.summary
+    };
+  }
+
+  async function listTicketAnalizerHistory(): Promise<TicketAnalizerHistoryView[]> {
+    const rows = await prisma.$queryRaw<Array<TicketAnalizerHistoryRow>>`
+      SELECT "id", "ticketIdsJson", "manualStateJson", "summaryJson", "createdAt"
+      FROM "TicketAnalizerHistory"
+      ORDER BY "createdAt" DESC
+    `;
+
+    return rows.map(toTicketAnalizerHistoryView);
+  }
+
+  async function getTicketAnalizerHistory(id: string): Promise<TicketAnalizerHistoryView | null> {
+    const rows = await prisma.$queryRaw<Array<TicketAnalizerHistoryRow>>`
+      SELECT "id", "ticketIdsJson", "manualStateJson", "summaryJson", "createdAt"
+      FROM "TicketAnalizerHistory"
+      WHERE "id" = ${id}
+      LIMIT 1
+    `;
+
+    return rows[0] ? toTicketAnalizerHistoryView(rows[0]) : null;
+  }
+
   async function disconnectPrisma() {
     await prisma.$disconnect();
   }
@@ -939,6 +1025,9 @@ export function createInventoryService(prisma: PrismaClient) {
     deleteOpenTicket,
     listPendingLeftoverCredits,
     closeTicket,
+    saveTicketAnalizerHistory,
+    listTicketAnalizerHistory,
+    getTicketAnalizerHistory,
     disconnectPrisma
   };
 }
@@ -970,7 +1059,121 @@ export const clearHistory = () => getDefaultService().clearHistory();
 export const deleteOpenTicket = (ticketId: string) => getDefaultService().deleteOpenTicket(ticketId);
 export const listPendingLeftoverCredits = (tier: Tier) => getDefaultService().listPendingLeftoverCredits(tier);
 export const closeTicket = (input: CloseTicketInput) => getDefaultService().closeTicket(input);
+export const saveTicketAnalizerHistory = (input: TicketAnalizerHistoryInput) =>
+  getDefaultService().saveTicketAnalizerHistory(input);
+export const listTicketAnalizerHistory = () => getDefaultService().listTicketAnalizerHistory();
+export const getTicketAnalizerHistory = (id: string) => getDefaultService().getTicketAnalizerHistory(id);
 export const disconnectPrisma = () => getDefaultService().disconnectPrisma();
+
+async function getNextXlTicketId(tx: {
+  fabricationTicket: {
+    findMany: (args: { where: { id: { startsWith: string } }; select: { id: true } }) => Promise<Array<{ id: string }>>;
+  };
+}) {
+  const tickets = await tx.fabricationTicket.findMany({
+    where: { id: { startsWith: "XL-" } },
+    select: { id: true }
+  });
+  const existingIds = new Set(tickets.map((ticket) => ticket.id));
+  let nextNumber =
+    tickets.reduce((max, ticket) => {
+      const match = /^XL-(\d+)$/.exec(ticket.id);
+      return match ? Math.max(max, Number(match[1])) : max;
+    }, 0) + 1;
+
+  let candidate = formatXlTicketId(nextNumber);
+  while (existingIds.has(candidate)) {
+    nextNumber += 1;
+    candidate = formatXlTicketId(nextNumber);
+  }
+
+  return candidate;
+}
+
+function formatXlTicketId(value: number) {
+  return `XL-${String(value).padStart(4, "0")}`;
+}
+
+function formatTicketCode(ticketId: string | null) {
+  if (!ticketId) {
+    return "-";
+  }
+
+  if (/^XL-\d+$/.test(ticketId)) {
+    return ticketId.toUpperCase();
+  }
+
+  return ticketId.slice(0, 6).toUpperCase();
+}
+
+type TicketAnalizerHistoryRow = {
+  id: string;
+  ticketIdsJson: string;
+  manualStateJson: string;
+  summaryJson: string;
+  createdAt: Date | string;
+};
+
+function validateTicketAnalizerHistoryInput(input: TicketAnalizerHistoryInput) {
+  if (!Array.isArray(input.ticketIds) || input.ticketIds.length !== 4 || input.ticketIds.some((id) => id.trim() === "")) {
+    throw new Error("El historial XL debe guardar exactamente 4 tickets.");
+  }
+
+  const uniqueIds = new Set(input.ticketIds.map((id) => id.trim()));
+  if (uniqueIds.size !== input.ticketIds.length) {
+    throw new Error("El historial XL no permite tickets duplicados.");
+  }
+
+  if (!input.manualState || !input.summary) {
+    throw new Error("El historial XL requiere estado manual y resumen.");
+  }
+}
+
+function normalizeTicketAnalizerHistoryTicketIds(ticketIds: string[]) {
+  return ticketIds.map((id) => id.trim()).sort((first, second) => first.localeCompare(second));
+}
+
+function createTicketAnalizerHistoryKey(ticketIds: string[]) {
+  return JSON.stringify(normalizeTicketAnalizerHistoryTicketIds(ticketIds));
+}
+
+async function backfillTicketAnalizerHistoryKeys(prisma: PrismaClient) {
+  const rows = await prisma.$queryRawUnsafe<Array<{ id: string; ticketIdsJson: string; ticketKey: string | null }>>(
+    `SELECT "id", "ticketIdsJson", "ticketKey" FROM "TicketAnalizerHistory"`
+  );
+
+  const seenKeys = new Set<string>();
+  for (const row of rows) {
+    const parsedTicketIds = JSON.parse(row.ticketIdsJson) as string[];
+    const ticketIds = normalizeTicketAnalizerHistoryTicketIds(parsedTicketIds);
+    const ticketKey = createTicketAnalizerHistoryKey(ticketIds);
+
+    if (seenKeys.has(ticketKey)) {
+      await prisma.$executeRaw`DELETE FROM "TicketAnalizerHistory" WHERE "id" = ${row.id}`;
+      continue;
+    }
+
+    seenKeys.add(ticketKey);
+    if (row.ticketKey !== ticketKey || row.ticketIdsJson !== JSON.stringify(ticketIds)) {
+      await prisma.$executeRaw`
+        UPDATE "TicketAnalizerHistory"
+        SET "ticketKey" = ${ticketKey}, "ticketIdsJson" = ${JSON.stringify(ticketIds)}
+        WHERE "id" = ${row.id}
+      `;
+    }
+  }
+}
+
+function toTicketAnalizerHistoryView(row: TicketAnalizerHistoryRow): TicketAnalizerHistoryView {
+  const createdAt = row.createdAt instanceof Date ? row.createdAt.toISOString() : new Date(row.createdAt).toISOString();
+  return {
+    id: row.id,
+    createdAt,
+    ticketIds: JSON.parse(row.ticketIdsJson) as string[],
+    manualState: JSON.parse(row.manualStateJson) as TicketAnalizerHistoryView["manualState"],
+    summary: JSON.parse(row.summaryJson) as TicketAnalizerHistoryView["summary"]
+  };
+}
 
 function toStockView(item: {
   id: string;
@@ -1020,7 +1223,7 @@ function toStaffStockLotView(lot: {
     quantity: lot.quantity,
     unitCost: lot.unitCost,
     ticketId: lot.ticketId,
-    ticketCode: lot.ticketId ? lot.ticketId.slice(0, 6).toUpperCase() : "-",
+    ticketCode: formatTicketCode(lot.ticketId),
     createdAt: lot.createdAt.toISOString()
   };
 }

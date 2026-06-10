@@ -18,7 +18,14 @@ const expectedChannels = [
   "staffStock:listLots",
   "staffStock:listMovements",
   "staffStock:adjust",
-  "staffStock:sell"
+  "staffStock:sell",
+  "ticketAnalizerHistory:save",
+  "ticketAnalizerHistory:list",
+  "ticketAnalizerHistory:get",
+  "window:minimize",
+  "window:toggleMaximize",
+  "window:close",
+  "window:isMaximized"
 ];
 
 beforeEach(() => {
@@ -47,6 +54,8 @@ describe("main process", () => {
       height: 820,
       minWidth: 980,
       minHeight: 680,
+      frame: false,
+      icon: expect.stringContaining("BlightAppIcon.png"),
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false
@@ -87,6 +96,8 @@ function installMainMocks(rendererUrl?: string) {
       height: number;
       minWidth: number;
       minHeight: number;
+      frame: boolean;
+      icon: string;
       webPreferences: {
         preload: string;
         contextIsolation: boolean;
@@ -132,6 +143,9 @@ function installMainMocks(rendererUrl?: string) {
     listStaffStockLots: vi.fn(),
     listStock: vi.fn(),
     listTickets: vi.fn(),
+    listTicketAnalizerHistory: vi.fn(),
+    saveTicketAnalizerHistory: vi.fn(),
+    getTicketAnalizerHistory: vi.fn(),
     sellStaffStock: vi.fn()
   }));
 

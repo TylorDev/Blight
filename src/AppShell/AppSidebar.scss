@@ -1,10 +1,10 @@
 .sidebar {
   position: sticky;
-  top: 0;
+  top: 42px;
   display: flex;
   flex-direction: column;
   gap: 22px;
-  height: 100vh;
+  height: calc(100vh - 42px);
   border-right: 1px solid #27272a;
   padding: 22px 14px;
   background:
@@ -20,17 +20,14 @@
   min-height: 48px;
   padding: 0 4px;
 
-  > span {
-    display: grid;
+  > img {
     width: 42px;
     height: 42px;
-    place-items: center;
     border: 1px solid #3f3f46;
     border-radius: 8px;
     background: #18181b;
-    color: #fafafa;
-    font-size: 13px;
-    font-weight: 800;
+    object-fit: contain;
+    padding: 3px;
   }
 
   div {

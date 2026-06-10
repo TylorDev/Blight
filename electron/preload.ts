@@ -7,7 +7,8 @@ import type {
   CreateBulkPurchaseInput,
   CreatePurchaseInput,
   CreateTicketInput,
-  SellStaffStockInput
+  SellStaffStockInput,
+  TicketAnalizerHistoryInput
 } from "./types";
 
 const api: AppApi = {
@@ -28,7 +29,14 @@ const api: AppApi = {
   listStaffStockLots: () => ipcRenderer.invoke("staffStock:listLots"),
   listStaffMovements: () => ipcRenderer.invoke("staffStock:listMovements"),
   adjustStaffStock: (input: AdjustStaffStockInput) => ipcRenderer.invoke("staffStock:adjust", input),
-  sellStaffStock: (input: SellStaffStockInput) => ipcRenderer.invoke("staffStock:sell", input)
+  sellStaffStock: (input: SellStaffStockInput) => ipcRenderer.invoke("staffStock:sell", input),
+  saveTicketAnalizerHistory: (input: TicketAnalizerHistoryInput) => ipcRenderer.invoke("ticketAnalizerHistory:save", input),
+  listTicketAnalizerHistory: () => ipcRenderer.invoke("ticketAnalizerHistory:list"),
+  getTicketAnalizerHistory: (id: string) => ipcRenderer.invoke("ticketAnalizerHistory:get", id),
+  minimizeWindow: () => ipcRenderer.invoke("window:minimize"),
+  toggleMaximizeWindow: () => ipcRenderer.invoke("window:toggleMaximize"),
+  closeWindow: () => ipcRenderer.invoke("window:close"),
+  isWindowMaximized: () => ipcRenderer.invoke("window:isMaximized")
 };
 
 contextBridge.exposeInMainWorld("blight", api);

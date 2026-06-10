@@ -18,7 +18,14 @@ const expectedApiKeys = [
   "listStaffStockLots",
   "listStaffMovements",
   "adjustStaffStock",
-  "sellStaffStock"
+  "sellStaffStock",
+  "saveTicketAnalizerHistory",
+  "listTicketAnalizerHistory",
+  "getTicketAnalizerHistory",
+  "minimizeWindow",
+  "toggleMaximizeWindow",
+  "closeWindow",
+  "isWindowMaximized"
 ];
 
 beforeEach(() => {
@@ -68,6 +75,34 @@ describe("preload", () => {
     await api.listStaffMovements();
     await api.adjustStaffStock({ tier: "T5", quality: "NORMAL", quantity: 1, reason: "Conteo" });
     await api.sellStaffStock({ tier: "T5", quality: "NORMAL", quantity: 1, total: 0 });
+    await api.saveTicketAnalizerHistory({
+      ticketIds: ["XL-0001", "XL-0002", "XL-0003", "XL-0004"],
+      manualState: {
+        effectiveSaleValueByPower: { "1560": 500000 },
+        effectiveSaleValueExceptions: {},
+        effectiveTaxPercentages: { saleOrderTaxPercent: 1.5, saleTaxPercent: 4 },
+        exceptionInputs: {},
+        quantityDrafts: {},
+        saleInputsByPower: {},
+        saleOrderTaxInput: "",
+        saleTaxInput: "",
+        unitCostDrafts: {}
+      },
+      summary: {
+        grossSale: 100,
+        netProfit: 80,
+        profitBeforeTaxes: 90,
+        taxesAndFees: 10,
+        totalCost: 10,
+        totalQuantity: 4
+      }
+    });
+    await api.listTicketAnalizerHistory();
+    await api.getTicketAnalizerHistory("history-1");
+    await api.minimizeWindow();
+    await api.toggleMaximizeWindow();
+    await api.closeWindow();
+    await api.isWindowMaximized();
 
     expect(invoke.mock.calls).toEqual([
       ["stock:list"],
@@ -97,7 +132,38 @@ describe("preload", () => {
       ["staffStock:listLots"],
       ["staffStock:listMovements"],
       ["staffStock:adjust", { tier: "T5", quality: "NORMAL", quantity: 1, reason: "Conteo" }],
-      ["staffStock:sell", { tier: "T5", quality: "NORMAL", quantity: 1, total: 0 }]
+      ["staffStock:sell", { tier: "T5", quality: "NORMAL", quantity: 1, total: 0 }],
+      [
+        "ticketAnalizerHistory:save",
+        {
+          ticketIds: ["XL-0001", "XL-0002", "XL-0003", "XL-0004"],
+          manualState: {
+            effectiveSaleValueByPower: { "1560": 500000 },
+            effectiveSaleValueExceptions: {},
+            effectiveTaxPercentages: { saleOrderTaxPercent: 1.5, saleTaxPercent: 4 },
+            exceptionInputs: {},
+            quantityDrafts: {},
+            saleInputsByPower: {},
+            saleOrderTaxInput: "",
+            saleTaxInput: "",
+            unitCostDrafts: {}
+          },
+          summary: {
+            grossSale: 100,
+            netProfit: 80,
+            profitBeforeTaxes: 90,
+            taxesAndFees: 10,
+            totalCost: 10,
+            totalQuantity: 4
+          }
+        }
+      ],
+      ["ticketAnalizerHistory:list"],
+      ["ticketAnalizerHistory:get", "history-1"],
+      ["window:minimize"],
+      ["window:toggleMaximize"],
+      ["window:close"],
+      ["window:isMaximized"]
     ]);
   });
 });

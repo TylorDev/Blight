@@ -9,5 +9,6 @@ export { SelectField } from "./SelectField";
 export { TicketCosts } from "./TicketCosts";
 export { TicketDetailDialog } from "./TicketDetailDialog";
 export { TicketDialog } from "./TicketDialog";
+export { TicketDialogXL } from "./TicketDialogXL";
 export { TicketPreview } from "./TicketPreview";
 export { TierBadge } from "./TierBadge";

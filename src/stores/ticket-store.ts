@@ -17,7 +17,7 @@ interface TicketStore {
   setMissingMaterials: (items: string[]) => void;
   clearError: () => void;
   loadTickets: () => Promise<void>;
-  createTicket: (input: CreateTicketInput) => Promise<void>;
+  createTicket: (input: CreateTicketInput) => Promise<FabricationTicketView>;
   deleteOpenTicket: (ticketId: string) => Promise<void>;
   closeTicket: (input: CloseTicketInput) => Promise<CloseTicketResult>;
   listPendingLeftoverCredits: (tier: AppTier) => ReturnType<typeof window.blight.listPendingLeftoverCredits>;
@@ -46,8 +46,9 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
   createTicket: async (input) => {
     set({ error: null, missingMaterials: [] });
     try {
-      await window.blight.createTicket(input);
+      const ticket = await window.blight.createTicket(input);
       await get().loadTickets();
+      return ticket;
     } catch (currentError) {
       const error = currentError instanceof Error ? currentError.message : "No se pudo crear el ticket.";
       set({ error });

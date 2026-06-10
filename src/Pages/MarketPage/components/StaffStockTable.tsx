@@ -1,6 +1,12 @@
 import { useMemo } from "react";
 import type { FabricationTicketView, StaffStockLotView } from "../../../../electron/types";
-import { formatCurrency, formatNumber, staffQualityLabels, staffQualityToneClasses } from "../../../app-data";
+import {
+  formatCurrency,
+  formatNumber,
+  staffItemPowerByTierAndQuality,
+  staffQualityLabels,
+  staffQualityToneClasses
+} from "../../../app-data";
 import { EmptyState, TicketDetailDialog, TierBadge } from "../../../Components";
 
 type StaffStockTableProps = {
@@ -20,6 +26,7 @@ export function StaffStockTable({ items, tickets }: StaffStockTableProps) {
       <div className="staff-market-row staff-market-row--head">
         <span>Tier</span>
         <span>Calidad</span>
+        <span>Poder de objeto</span>
         <span>Cantidad</span>
         <span>Coste</span>
         <span>Ticket</span>
@@ -38,6 +45,7 @@ function StaffStockRow({ item, ticket }: { item: StaffStockLotView; ticket?: Fab
       <span className={`staff-quality-chip ${staffQualityToneClasses[item.quality]}`}>
         {staffQualityLabels[item.quality]}
       </span>
+      <strong>{formatNumber(staffItemPowerByTierAndQuality[item.tier][item.quality])}</strong>
       <strong>{formatNumber(item.quantity)}</strong>
       <span>{formatCurrency(item.unitCost)}</span>
       <span>

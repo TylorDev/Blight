@@ -1,4 +1,4 @@
-import { PrismaClient, StaffMovementType, StaffQuality, StockCategory, Tier } from "@prisma/client";
+import { PrismaClient, StaffMovementType, StaffQuality, StockCategory, TicketStatus, Tier } from "@prisma/client";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -47,9 +47,87 @@ describe("initializeDatabase", () => {
         "StaffStockItem",
         "StaffStockMovement",
         "StaffStockLot",
-        "TicketProducedStaff"
+        "TicketProducedStaff",
+        "TicketAnalizerHistory"
       ])
     );
+  });
+});
+
+describe("ticket analizer history", () => {
+  it("saves, lists and retrieves XL snapshots without changing fabrication tickets", async () => {
+    await prisma.fabricationTicket.create({
+      data: {
+        id: "XL-0001",
+        tier: Tier.T5,
+        status: TicketStatus.CERRADO,
+        unitCost: 123,
+        closedAt: new Date("2026-01-01T00:00:00.000Z")
+      }
+    });
+
+    const firstSaved = await service.saveTicketAnalizerHistory({
+      ticketIds: ["XL-0001", "XL-0002", "XL-0003", "XL-0004"],
+      manualState: {
+        effectiveSaleValueByPower: { "1560": 500000 },
+        effectiveSaleValueExceptions: { "T8:NORMAL": 800000 },
+        effectiveTaxPercentages: { saleOrderTaxPercent: 1.5, saleTaxPercent: 4 },
+        exceptionInputs: { "T8:NORMAL": "800.000" },
+        quantityDrafts: { "XL-0001:NORMAL": "2" },
+        saleInputsByPower: { "1560": "500.000" },
+        saleOrderTaxInput: "1.5",
+        saleTaxInput: "4",
+        unitCostDrafts: { "XL-0001": "123" }
+      },
+      summary: {
+        grossSale: 1000,
+        netProfit: 800,
+        profitBeforeTaxes: 900,
+        taxesAndFees: 100,
+        totalCost: 100,
+        totalQuantity: 4
+      }
+    });
+    const secondSaved = await service.saveTicketAnalizerHistory({
+      ticketIds: ["XL-0004", "XL-0003", "XL-0002", "XL-0001"],
+      manualState: {
+        effectiveSaleValueByPower: { "1560": 510000 },
+        effectiveSaleValueExceptions: { "T8:NORMAL": 810000 },
+        effectiveTaxPercentages: { saleOrderTaxPercent: 2, saleTaxPercent: 4 },
+        exceptionInputs: { "T8:NORMAL": "810.000" },
+        quantityDrafts: { "XL-0001:NORMAL": "3" },
+        saleInputsByPower: { "1560": "510.000" },
+        saleOrderTaxInput: "2",
+        saleTaxInput: "4",
+        unitCostDrafts: { "XL-0001": "456" }
+      },
+      summary: {
+        grossSale: 2000,
+        netProfit: 1600,
+        profitBeforeTaxes: 1800,
+        taxesAndFees: 200,
+        totalCost: 200,
+        totalQuantity: 5
+      }
+    });
+
+    const records = await service.listTicketAnalizerHistory();
+    const record = await service.getTicketAnalizerHistory(firstSaved.id);
+    const ticket = await prisma.fabricationTicket.findUniqueOrThrow({ where: { id: "XL-0001" } });
+
+    expect(secondSaved.id).toBe(firstSaved.id);
+    expect(records).toHaveLength(1);
+    expect(record).toMatchObject({
+      id: firstSaved.id,
+      ticketIds: ["XL-0001", "XL-0002", "XL-0003", "XL-0004"],
+      manualState: {
+        quantityDrafts: { "XL-0001:NORMAL": "3" },
+        unitCostDrafts: { "XL-0001": "456" }
+      },
+      summary: { netProfit: 1600, totalQuantity: 5 }
+    });
+    expect(ticket.unitCost).toBe(123);
+    expect(await prisma.fabricationTicket.count()).toBe(1);
   });
 });
 
@@ -358,6 +436,61 @@ describe("tickets", () => {
     expect(ticket.craftingTax).toBeCloseTo(7056, 4);
   });
 
+  it("creates XL tickets with sequential prefixed ids", async () => {
+    const first = await service.createTicket({ tier: Tier.T5, tax: 100, idPrefix: "XL" });
+    const second = await service.createTicket({ tier: Tier.T6, tax: 100, idPrefix: "XL" });
+
+    expect(first.id).toBe("XL-0001");
+    expect(second.id).toBe("XL-0002");
+  });
+
+  it("continues XL ticket ids from the highest existing XL id", async () => {
+    await prisma.fabricationTicket.create({
+      data: {
+        id: "XL-0004",
+        tier: Tier.T5,
+        recipeId: "RECETA_2",
+        tax: 100,
+        staffQuantity: 7,
+        focusCost: 7035,
+        craftingTax: 7056
+      }
+    });
+
+    const ticket = await service.createTicket({ tier: Tier.T8, tax: 100, idPrefix: "XL" });
+
+    expect(ticket.id).toBe("XL-0005");
+  });
+
+  it("continues XL ticket ids from legacy short XL ids", async () => {
+    await prisma.fabricationTicket.createMany({
+      data: [
+        {
+          id: "XL-000",
+          tier: Tier.T5,
+          recipeId: "RECETA_2",
+          tax: 100,
+          staffQuantity: 7,
+          focusCost: 7035,
+          craftingTax: 7056
+        },
+        {
+          id: "XL-001",
+          tier: Tier.T6,
+          recipeId: "RECETA_2",
+          tax: 100,
+          staffQuantity: 7,
+          focusCost: 7035,
+          craftingTax: 7658.2896
+        }
+      ]
+    });
+
+    const ticket = await service.createTicket({ tier: Tier.T8, tax: 100, idPrefix: "XL" });
+
+    expect(ticket.id).toBe("XL-0002");
+  });
+
   it("closes a default recipe 2 ticket with 50 cloths and 7 produced staff", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
 
@@ -513,6 +646,20 @@ describe("tickets", () => {
         unitCost: expect.closeTo(24674.6667, 4),
         ticketId: ticket.id,
         ticketCode: ticket.id.slice(0, 6).toUpperCase()
+      })
+    ]);
+  });
+
+  it("keeps XL ticket codes visible without truncating them", async () => {
+    await seedRecipeStock(Tier.T5, 100, 1000);
+
+    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100, recipeId: "RECETA_1", idPrefix: "XL" });
+    await service.closeTicket(closeInput(ticket.id));
+
+    expect(await service.listStaffStockLots()).toEqual([
+      expect.objectContaining({
+        ticketId: "XL-0001",
+        ticketCode: "XL-0001"
       })
     ]);
   });
