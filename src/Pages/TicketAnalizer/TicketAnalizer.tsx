@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { BarChart3, Check, Edit3, Save } from "lucide-react";
 import { useSearchParams } from "react-router";
-import type { AppTier, StaffQualityView, TicketAnalizerHistoryManualState } from "../../../electron/types";
+import type {
+  AppTier,
+  StaffQualityView,
+  TicketAnalizerHistoryManualState,
+  TicketAnalizerHistoryView
+} from "../../../electron/types";
 import type {
   SaleValueExceptionKey,
   TicketAnalizerEditOverrides,
@@ -12,6 +17,7 @@ import type {
 } from "./ticket-analizer";
 import {
   analyzeTickets,
+  classifyTicketAnalizerHistoryMutation,
   createTicketQualityOverrideKey,
   createDefaultSaleValueByPower,
   createDefaultSaleValueExceptions,
@@ -57,6 +63,7 @@ export function TicketAnalizer() {
   const [historyFeedback, setHistoryFeedback] = useState<string | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [savingHistory, setSavingHistory] = useState(false);
+  const [loadedHistoryRecord, setLoadedHistoryRecord] = useState<TicketAnalizerHistoryView | null>(null);
 
   useEffect(() => {
     void loadHistory().catch(() => undefined);
@@ -64,6 +71,7 @@ export function TicketAnalizer() {
 
   useEffect(() => {
     if (!historyId) {
+      setLoadedHistoryRecord(null);
       return;
     }
 
@@ -84,6 +92,7 @@ export function TicketAnalizer() {
           setSaleTaxInput,
           setUnitCostDrafts
         });
+        setLoadedHistoryRecord(record);
         setIsEditing(true);
         setHistoryFeedback("Registro XL cargado.");
         setHistoryError(null);
@@ -154,22 +163,39 @@ export function TicketAnalizer() {
     setHistoryFeedback(null);
     setHistoryError(null);
     try {
-      await window.blight.saveTicketAnalizerHistory({
+      const manualState: TicketAnalizerHistoryManualState = {
+        effectiveSaleValueByPower: saleValueByPower,
+        effectiveSaleValueExceptions: saleValueExceptions,
+        effectiveTaxPercentages: taxPercentages,
+        exceptionInputs,
+        quantityDrafts,
+        saleInputsByPower,
+        saleOrderTaxInput,
+        saleTaxInput,
+        unitCostDrafts
+      };
+      const mutationClassification = classifyTicketAnalizerHistoryMutation(
+        manualState,
+        loadedHistoryRecord?.isAccountingValid ?? true
+      );
+      const sourceSnapshotId =
+        mutationClassification.isAccountingValid ? null : loadedHistoryRecord?.sourceSnapshotId ?? loadedHistoryRecord?.id ?? null;
+      const savedRecord = await window.blight.saveTicketAnalizerHistory({
+        invalidationReason: mutationClassification.invalidationReason,
+        isAccountingValid: mutationClassification.isAccountingValid,
+        isEdited: mutationClassification.isEdited,
+        mutationType: mutationClassification.mutationType,
         ticketIds: analysis.selectedTickets.map((ticket) => ticket.id),
-        manualState: {
-          effectiveSaleValueByPower: saleValueByPower,
-          effectiveSaleValueExceptions: saleValueExceptions,
-          effectiveTaxPercentages: taxPercentages,
-          exceptionInputs,
-          quantityDrafts,
-          saleInputsByPower,
-          saleOrderTaxInput,
-          saleTaxInput,
-          unitCostDrafts
-        },
+        sourceSnapshotId,
+        manualState,
         summary: analysis.financialSummary
       });
-      setHistoryFeedback("Cambios guardados en HistoryXL.");
+      setLoadedHistoryRecord(savedRecord);
+      setHistoryFeedback(
+        mutationClassification.isAccountingValid
+          ? "Registro XL contable actualizado en HistoryXL."
+          : "Snapshot editado actualizado en HistoryXL. No afecta contabilidad."
+      );
     } catch (currentError) {
       setHistoryError(currentError instanceof Error ? currentError.message : "No se pudieron guardar los cambios.");
     } finally {

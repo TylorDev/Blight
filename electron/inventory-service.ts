@@ -282,10 +282,20 @@ export function createInventoryService(prisma: PrismaClient) {
       "ticketIdsJson" TEXT NOT NULL,
       "manualStateJson" TEXT NOT NULL,
       "summaryJson" TEXT NOT NULL,
+      "isEdited" INTEGER NOT NULL DEFAULT 0,
+      "isAccountingValid" INTEGER NOT NULL DEFAULT 1,
+      "sourceSnapshotId" TEXT,
+      "invalidationReason" TEXT,
+      "mutationType" TEXT,
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `);
     await addColumnIfMissing(prisma, "TicketAnalizerHistory", "ticketKey", "TEXT");
+    await addColumnIfMissing(prisma, "TicketAnalizerHistory", "isEdited", "INTEGER NOT NULL DEFAULT 0");
+    await addColumnIfMissing(prisma, "TicketAnalizerHistory", "isAccountingValid", "INTEGER NOT NULL DEFAULT 1");
+    await addColumnIfMissing(prisma, "TicketAnalizerHistory", "sourceSnapshotId", "TEXT");
+    await addColumnIfMissing(prisma, "TicketAnalizerHistory", "invalidationReason", "TEXT");
+    await addColumnIfMissing(prisma, "TicketAnalizerHistory", "mutationType", "TEXT");
     await backfillTicketAnalizerHistoryKeys(prisma);
 
     await prisma.$executeRawUnsafe(`
@@ -298,9 +308,15 @@ export function createInventoryService(prisma: PrismaClient) {
     ON "StaffStockItem"("tier", "quality");
   `);
 
+    await prisma.$executeRawUnsafe(`DROP INDEX IF EXISTS "TicketAnalizerHistory_ticketKey_key";`);
     await prisma.$executeRawUnsafe(`
-    CREATE UNIQUE INDEX IF NOT EXISTS "TicketAnalizerHistory_ticketKey_key"
-    ON "TicketAnalizerHistory"("ticketKey");
+    CREATE UNIQUE INDEX IF NOT EXISTS "TicketAnalizerHistory_accounting_ticketKey_key"
+    ON "TicketAnalizerHistory"("ticketKey")
+    WHERE "isAccountingValid" = 1;
+  `);
+    await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "TicketAnalizerHistory_edited_source_ticketKey_idx"
+    ON "TicketAnalizerHistory"("sourceSnapshotId", "ticketKey", "isAccountingValid");
   `);
 
     await ensureStockItems();
@@ -944,13 +960,37 @@ export function createInventoryService(prisma: PrismaClient) {
     const ticketKey = createTicketAnalizerHistoryKey(ticketIds);
     const id = randomUUID();
     const now = new Date();
+    const isEdited = input.isEdited ?? false;
+    const isAccountingValid = input.isAccountingValid ?? !isEdited;
+    const sourceSnapshotId = input.sourceSnapshotId?.trim() || null;
+    const invalidationReason = isAccountingValid ? null : input.invalidationReason ?? null;
+    const mutationType = isAccountingValid ? null : input.mutationType ?? null;
 
-    const existingRows = await prisma.$queryRaw<Array<{ id: string }>>`
-      SELECT "id"
-      FROM "TicketAnalizerHistory"
-      WHERE "ticketKey" = ${ticketKey}
-      LIMIT 1
-    `;
+    const existingRows = isAccountingValid
+      ? await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "TicketAnalizerHistory"
+        WHERE "ticketKey" = ${ticketKey}
+          AND "isAccountingValid" = 1
+        LIMIT 1
+      `
+      : sourceSnapshotId
+        ? await prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT "id"
+          FROM "TicketAnalizerHistory"
+          WHERE "ticketKey" = ${ticketKey}
+            AND "isAccountingValid" = 0
+            AND "sourceSnapshotId" = ${sourceSnapshotId}
+          LIMIT 1
+        `
+        : await prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT "id"
+          FROM "TicketAnalizerHistory"
+          WHERE "ticketKey" = ${ticketKey}
+            AND "isAccountingValid" = 0
+            AND "sourceSnapshotId" IS NULL
+          LIMIT 1
+        `;
     const existingId = existingRows[0]?.id;
 
     if (existingId) {
@@ -960,19 +1000,53 @@ export function createInventoryService(prisma: PrismaClient) {
           "ticketIdsJson" = ${JSON.stringify(ticketIds)},
           "manualStateJson" = ${JSON.stringify(input.manualState)},
           "summaryJson" = ${JSON.stringify(input.summary)},
+          "isEdited" = ${isEdited ? 1 : 0},
+          "isAccountingValid" = ${isAccountingValid ? 1 : 0},
+          "sourceSnapshotId" = ${sourceSnapshotId},
+          "invalidationReason" = ${invalidationReason},
+          "mutationType" = ${mutationType},
           "createdAt" = ${now}
         WHERE "id" = ${existingId}
       `;
     } else {
       await prisma.$executeRaw`
-        INSERT INTO "TicketAnalizerHistory" ("id", "ticketKey", "ticketIdsJson", "manualStateJson", "summaryJson", "createdAt")
-        VALUES (${id}, ${ticketKey}, ${JSON.stringify(ticketIds)}, ${JSON.stringify(input.manualState)}, ${JSON.stringify(input.summary)}, ${now})
+        INSERT INTO "TicketAnalizerHistory" (
+          "id",
+          "ticketKey",
+          "ticketIdsJson",
+          "manualStateJson",
+          "summaryJson",
+          "isEdited",
+          "isAccountingValid",
+          "sourceSnapshotId",
+          "invalidationReason",
+          "mutationType",
+          "createdAt"
+        )
+        VALUES (
+          ${id},
+          ${ticketKey},
+          ${JSON.stringify(ticketIds)},
+          ${JSON.stringify(input.manualState)},
+          ${JSON.stringify(input.summary)},
+          ${isEdited ? 1 : 0},
+          ${isAccountingValid ? 1 : 0},
+          ${sourceSnapshotId},
+          ${invalidationReason},
+          ${mutationType},
+          ${now}
+        )
       `;
     }
 
     return {
       id: existingId ?? id,
       createdAt: now.toISOString(),
+      invalidationReason,
+      isAccountingValid,
+      isEdited,
+      mutationType,
+      sourceSnapshotId,
       ticketIds,
       manualState: input.manualState,
       summary: input.summary
@@ -981,7 +1055,7 @@ export function createInventoryService(prisma: PrismaClient) {
 
   async function listTicketAnalizerHistory(): Promise<TicketAnalizerHistoryView[]> {
     const rows = await prisma.$queryRaw<Array<TicketAnalizerHistoryRow>>`
-      SELECT "id", "ticketIdsJson", "manualStateJson", "summaryJson", "createdAt"
+      SELECT "id", "ticketIdsJson", "manualStateJson", "summaryJson", "isEdited", "isAccountingValid", "sourceSnapshotId", "invalidationReason", "mutationType", "createdAt"
       FROM "TicketAnalizerHistory"
       ORDER BY "createdAt" DESC
     `;
@@ -991,7 +1065,7 @@ export function createInventoryService(prisma: PrismaClient) {
 
   async function getTicketAnalizerHistory(id: string): Promise<TicketAnalizerHistoryView | null> {
     const rows = await prisma.$queryRaw<Array<TicketAnalizerHistoryRow>>`
-      SELECT "id", "ticketIdsJson", "manualStateJson", "summaryJson", "createdAt"
+      SELECT "id", "ticketIdsJson", "manualStateJson", "summaryJson", "isEdited", "isAccountingValid", "sourceSnapshotId", "invalidationReason", "mutationType", "createdAt"
       FROM "TicketAnalizerHistory"
       WHERE "id" = ${id}
       LIMIT 1
@@ -1111,6 +1185,11 @@ type TicketAnalizerHistoryRow = {
   ticketIdsJson: string;
   manualStateJson: string;
   summaryJson: string;
+  isEdited: number | boolean;
+  isAccountingValid: number | boolean;
+  sourceSnapshotId: string | null;
+  invalidationReason: TicketAnalizerHistoryView["invalidationReason"];
+  mutationType: TicketAnalizerHistoryView["mutationType"];
   createdAt: Date | string;
 };
 
@@ -1138,8 +1217,10 @@ function createTicketAnalizerHistoryKey(ticketIds: string[]) {
 }
 
 async function backfillTicketAnalizerHistoryKeys(prisma: PrismaClient) {
-  const rows = await prisma.$queryRawUnsafe<Array<{ id: string; ticketIdsJson: string; ticketKey: string | null }>>(
-    `SELECT "id", "ticketIdsJson", "ticketKey" FROM "TicketAnalizerHistory"`
+  const rows = await prisma.$queryRawUnsafe<
+    Array<{ id: string; ticketIdsJson: string; ticketKey: string | null; isAccountingValid: number | boolean }>
+  >(
+    `SELECT "id", "ticketIdsJson", "ticketKey", "isAccountingValid" FROM "TicketAnalizerHistory"`
   );
 
   const seenKeys = new Set<string>();
@@ -1148,12 +1229,14 @@ async function backfillTicketAnalizerHistoryKeys(prisma: PrismaClient) {
     const ticketIds = normalizeTicketAnalizerHistoryTicketIds(parsedTicketIds);
     const ticketKey = createTicketAnalizerHistoryKey(ticketIds);
 
-    if (seenKeys.has(ticketKey)) {
+    if (Boolean(row.isAccountingValid) && seenKeys.has(ticketKey)) {
       await prisma.$executeRaw`DELETE FROM "TicketAnalizerHistory" WHERE "id" = ${row.id}`;
       continue;
     }
 
-    seenKeys.add(ticketKey);
+    if (Boolean(row.isAccountingValid)) {
+      seenKeys.add(ticketKey);
+    }
     if (row.ticketKey !== ticketKey || row.ticketIdsJson !== JSON.stringify(ticketIds)) {
       await prisma.$executeRaw`
         UPDATE "TicketAnalizerHistory"
@@ -1169,6 +1252,11 @@ function toTicketAnalizerHistoryView(row: TicketAnalizerHistoryRow): TicketAnali
   return {
     id: row.id,
     createdAt,
+    invalidationReason: row.invalidationReason,
+    isAccountingValid: Boolean(row.isAccountingValid),
+    isEdited: Boolean(row.isEdited),
+    mutationType: row.mutationType,
+    sourceSnapshotId: row.sourceSnapshotId,
     ticketIds: JSON.parse(row.ticketIdsJson) as string[],
     manualState: JSON.parse(row.manualStateJson) as TicketAnalizerHistoryView["manualState"],
     summary: JSON.parse(row.summaryJson) as TicketAnalizerHistoryView["summary"]

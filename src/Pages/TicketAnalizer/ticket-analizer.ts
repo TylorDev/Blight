@@ -2,7 +2,9 @@ import type {
   AppTier,
   FabricationTicketView,
   StaffQualityView,
+  TicketAnalizerHistoryInvalidationReason,
   TicketAnalizerHistoryManualState,
+  TicketAnalizerHistoryMutationType,
   TicketAnalizerHistorySummary
 } from "../../../electron/types";
 import {
@@ -37,6 +39,12 @@ export type TicketAnalizerEditOverrides = {
 export type TicketAnalizerTaxPercentages = {
   saleOrderTaxPercent: number;
   saleTaxPercent: number;
+};
+export type TicketAnalizerHistoryMutationClassification = {
+  invalidationReason: TicketAnalizerHistoryInvalidationReason | null;
+  isAccountingValid: boolean;
+  isEdited: boolean;
+  mutationType: TicketAnalizerHistoryMutationType | null;
 };
 
 export const ticketAnalizerSaleValueExceptionLabels: Record<SaleValueExceptionKey, string> = {
@@ -203,6 +211,35 @@ export function getTicketAnalizerValuesFromManualState(manualState: TicketAnaliz
   };
 }
 
+export function classifyTicketAnalizerHistoryMutation(
+  manualState: Pick<TicketAnalizerHistoryManualState, "quantityDrafts" | "unitCostDrafts">,
+  sourceIsAccountingValid = true
+): TicketAnalizerHistoryMutationClassification {
+  const unitCostChanged = hasNonEmptyDraft(manualState.unitCostDrafts);
+  const quantityChanged = hasNonEmptyDraft(manualState.quantityDrafts);
+  const realTicketDataChanged = unitCostChanged || quantityChanged;
+
+  if (!sourceIsAccountingValid || realTicketDataChanged) {
+    return {
+      invalidationReason: "REAL_TICKET_DATA_MODIFIED",
+      isAccountingValid: false,
+      isEdited: true,
+      mutationType: unitCostChanged && !quantityChanged
+        ? "UNIT_PRICE_CHANGED"
+        : quantityChanged && !unitCostChanged
+          ? "QUANTITY_BY_QUALITY_CHANGED"
+          : "REAL_TICKET_DATA_MODIFIED"
+    };
+  }
+
+  return {
+    invalidationReason: null,
+    isAccountingValid: true,
+    isEdited: false,
+    mutationType: null
+  };
+}
+
 export function analyzeTickets(
   tickets: FabricationTicketView[],
   manualTicketIds: string[],
@@ -264,6 +301,10 @@ function parseSavedThousandsInput(value: string) {
   const normalized = value.replace(/\./g, "").replace(/,/g, ".").replace(/[^0-9.]/g, "");
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function hasNonEmptyDraft(drafts: Record<string, string>) {
+  return Object.values(drafts).some((draft) => draft.trim() !== "");
 }
 
 export function calculateTicketAnalizerFinancialSummary(

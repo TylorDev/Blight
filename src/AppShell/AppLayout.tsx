@@ -1,6 +1,6 @@
 import { Archive, Factory, History, Package } from "lucide-react";
 import { Navigate, Route, Routes } from "react-router";
-import { BulkPurchaseDialog, ClearStockDialog, Metric, PurchaseDialog, TicketDialog } from "../Components";
+import { BulkPurchaseDialog, ClearStockDialog, Metric, PurchaseDialog, TicketDialog, TicketDialogXL } from "../Components";
 import { formatNumber } from "../app-data";
 import { BuyPage } from "../Pages/BuyPage/BuyPage";
 import { HistoryXL } from "../Pages/HistoryXL/HistoryXL";
@@ -61,10 +61,17 @@ export function AppLayout({
             <Route
               path="/Ticket"
               element={
-                <PageShell eyebrow="Fabricacion" title="Tickets" actions={<TicketDialog />}>
-                  <section className="metrics">
-                    <Metric icon={<Factory />} label="Tickets abiertos" value={String(openTicketsCount)} />
-                  </section>
+                <PageShell
+                  eyebrow="Fabricacion"
+                  title="Tickets"
+                  actions={
+                    <>
+                      <TicketDialog />
+                      <TicketDialogXL />
+                    </>
+                  }
+                >
+                  
                   <div className="workspace">
                     <section className="panel">
                       <TicketTab />

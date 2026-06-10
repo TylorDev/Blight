@@ -46,7 +46,8 @@ export function HistoryXL() {
       summaryForTotals: liveSummary ?? record.summary
     };
   });
-  const historyTotals = recordsWithSummary.reduce(
+  const accountingRecordsWithSummary = recordsWithSummary.filter((item) => item.record.isAccountingValid);
+  const historyTotals = accountingRecordsWithSummary.reduce(
     (totals, item) => ({
       grossSale: totals.grossSale + item.summaryForTotals.grossSale,
       netProfit: totals.netProfit + item.summaryForTotals.netProfit,
@@ -90,6 +91,17 @@ export function HistoryXL() {
                 {formatRecordDate(record.createdAt)}
               </span>
               <strong>{record.ticketIds.join(" / ")}</strong>
+              <span
+                className={`history-xl-record__status ${
+                  record.isAccountingValid ? "history-xl-record__status--accounting" : ""
+                }`}
+              >
+                {record.isAccountingValid ? "Original contable" : "Editado manualmente"}
+                {!record.isAccountingValid ? <small>No incluido en totales</small> : null}
+              </span>
+              {!record.isAccountingValid ? (
+                <span className="history-xl-record__reason">{formatInvalidationReason(record.mutationType)}</span>
+              ) : null}
               <span className="history-xl-record__summary">
                 <BarChart3 />
                 {liveSummary
@@ -104,6 +116,18 @@ export function HistoryXL() {
       </section>
     </>
   );
+}
+
+function formatInvalidationReason(mutationType: TicketAnalizerHistoryView["mutationType"]) {
+  if (mutationType === "UNIT_PRICE_CHANGED") {
+    return "Datos modificados: precio promedio";
+  }
+
+  if (mutationType === "QUANTITY_BY_QUALITY_CHANGED") {
+    return "Datos modificados: cantidad por calidad";
+  }
+
+  return "Datos reales del ticket modificados";
 }
 
 function getLiveSummary(record: TicketAnalizerHistoryView, closedTickets: FabricationTicketView[]) {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AppTier, StaffQualityView } from "../../electron/types";
 import {
   analyzeTickets,
+  classifyTicketAnalizerHistoryMutation,
   createDefaultTicketAnalizerHistoryManualState,
   createDefaultSaleValueByPower,
   createDefaultSaleValueExceptions,
@@ -344,6 +345,52 @@ describe("ticket-analizer", () => {
       saleValueByPower: { 1560: 600000 },
       saleValueExceptions: { "T8:NORMAL": 900000 },
       taxPercentages: { saleOrderTaxPercent: 2, saleTaxPercent: 3 }
+    });
+  });
+
+  it("classifies HistoryXL changes as accounting-safe or non-accounting", () => {
+    expect(
+      classifyTicketAnalizerHistoryMutation({
+        quantityDrafts: {},
+        unitCostDrafts: {}
+      })
+    ).toEqual({
+      invalidationReason: null,
+      isAccountingValid: true,
+      isEdited: false,
+      mutationType: null
+    });
+    expect(
+      classifyTicketAnalizerHistoryMutation({
+        quantityDrafts: {},
+        unitCostDrafts: { "XL-0001": "700.000" }
+      })
+    ).toMatchObject({
+      invalidationReason: "REAL_TICKET_DATA_MODIFIED",
+      isAccountingValid: false,
+      isEdited: true,
+      mutationType: "UNIT_PRICE_CHANGED"
+    });
+    expect(
+      classifyTicketAnalizerHistoryMutation({
+        quantityDrafts: { "XL-0001:NORMAL": "8" },
+        unitCostDrafts: {}
+      })
+    ).toMatchObject({
+      isAccountingValid: false,
+      mutationType: "QUANTITY_BY_QUALITY_CHANGED"
+    });
+    expect(
+      classifyTicketAnalizerHistoryMutation(
+        {
+          quantityDrafts: {},
+          unitCostDrafts: {}
+        },
+        false
+      )
+    ).toMatchObject({
+      isAccountingValid: false,
+      mutationType: "REAL_TICKET_DATA_MODIFIED"
     });
   });
 

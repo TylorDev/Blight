@@ -3,7 +3,7 @@ import { Loader2, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { FabricationTicketView } from "../../../electron/types";
 import { categories, categoryLabels, formatCurrency, formatDate, tierLabels, tiers } from "../../app-data";
-import { CloseTicketDialog, EmptyState, Recipe, TicketCosts, TicketDialogXL, TierBadge } from "../../Components";
+import { CloseTicketDialog, EmptyState, Recipe, TicketCosts, TierBadge } from "../../Components";
 import { useHistoryStore } from "../../stores/history-store";
 import { useTicketStore } from "../../stores/ticket-store";
 import "./TicketTab.scss";
@@ -39,7 +39,6 @@ export function TicketTab() {
           <h2>Tickets abiertos</h2>
           <span>Cierre con validacion de stock</span>
         </div>
-        <TicketDialogXL />
       </div>
       <section className="ticket-summary" aria-label="Resumen de inversion consumida en tickets">
         <div className="ticket-summary__group">

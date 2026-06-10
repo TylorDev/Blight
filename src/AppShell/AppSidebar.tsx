@@ -7,13 +7,7 @@ import "./AppSidebar.scss";
 export function AppSidebar() {
   return (
     <aside className="sidebar">
-      <div className="sidebar-brand">
-        <img alt="Blight" src={blightLogo} />
-        <div>
-          <strong>Blight</strong>
-          <small>Inventario</small>
-        </div>
-      </div>
+    
       <nav className="sidebar-nav" aria-label="Navegacion principal">
         <SidebarLink icon={<Archive />} label="Stock" to="/Stock" />
         <SidebarLink icon={<Factory />} label="Tickets" to="/Ticket" />

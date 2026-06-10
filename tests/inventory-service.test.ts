@@ -3,7 +3,7 @@ import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createInventoryService } from "../electron/inventory-service";
-import type { CloseTicketInput } from "../electron/types";
+import type { CloseTicketInput, TicketAnalizerHistoryInput } from "../electron/types";
 
 let prisma: PrismaClient;
 let service: ReturnType<typeof createInventoryService>;
@@ -66,50 +66,31 @@ describe("ticket analizer history", () => {
       }
     });
 
-    const firstSaved = await service.saveTicketAnalizerHistory({
-      ticketIds: ["XL-0001", "XL-0002", "XL-0003", "XL-0004"],
-      manualState: {
-        effectiveSaleValueByPower: { "1560": 500000 },
-        effectiveSaleValueExceptions: { "T8:NORMAL": 800000 },
-        effectiveTaxPercentages: { saleOrderTaxPercent: 1.5, saleTaxPercent: 4 },
-        exceptionInputs: { "T8:NORMAL": "800.000" },
-        quantityDrafts: { "XL-0001:NORMAL": "2" },
-        saleInputsByPower: { "1560": "500.000" },
-        saleOrderTaxInput: "1.5",
-        saleTaxInput: "4",
-        unitCostDrafts: { "XL-0001": "123" }
-      },
-      summary: {
-        grossSale: 1000,
-        netProfit: 800,
-        profitBeforeTaxes: 900,
-        taxesAndFees: 100,
-        totalCost: 100,
-        totalQuantity: 4
-      }
-    });
-    const secondSaved = await service.saveTicketAnalizerHistory({
-      ticketIds: ["XL-0004", "XL-0003", "XL-0002", "XL-0001"],
-      manualState: {
-        effectiveSaleValueByPower: { "1560": 510000 },
-        effectiveSaleValueExceptions: { "T8:NORMAL": 810000 },
-        effectiveTaxPercentages: { saleOrderTaxPercent: 2, saleTaxPercent: 4 },
-        exceptionInputs: { "T8:NORMAL": "810.000" },
-        quantityDrafts: { "XL-0001:NORMAL": "3" },
-        saleInputsByPower: { "1560": "510.000" },
-        saleOrderTaxInput: "2",
-        saleTaxInput: "4",
-        unitCostDrafts: { "XL-0001": "456" }
-      },
-      summary: {
-        grossSale: 2000,
-        netProfit: 1600,
-        profitBeforeTaxes: 1800,
-        taxesAndFees: 200,
-        totalCost: 200,
-        totalQuantity: 5
-      }
-    });
+    const firstSaved = await service.saveTicketAnalizerHistory(createHistoryInput());
+    const secondSaved = await service.saveTicketAnalizerHistory(
+      createHistoryInput({
+        ticketIds: ["XL-0004", "XL-0003", "XL-0002", "XL-0001"],
+        manualState: {
+          ...createHistoryInput().manualState,
+          effectiveSaleValueByPower: { "1560": 510000 },
+          effectiveSaleValueExceptions: { "T8:NORMAL": 810000 },
+          effectiveTaxPercentages: { saleOrderTaxPercent: 2, saleTaxPercent: 4 },
+          exceptionInputs: { "T8:NORMAL": "810.000" },
+          quantityDrafts: { "XL-0001:NORMAL": "3" },
+          saleInputsByPower: { "1560": "510.000" },
+          saleOrderTaxInput: "2",
+          unitCostDrafts: { "XL-0001": "456" }
+        },
+        summary: {
+          grossSale: 2000,
+          netProfit: 1600,
+          profitBeforeTaxes: 1800,
+          taxesAndFees: 200,
+          totalCost: 200,
+          totalQuantity: 5
+        }
+      })
+    );
 
     const records = await service.listTicketAnalizerHistory();
     const record = await service.getTicketAnalizerHistory(firstSaved.id);
@@ -119,6 +100,11 @@ describe("ticket analizer history", () => {
     expect(records).toHaveLength(1);
     expect(record).toMatchObject({
       id: firstSaved.id,
+      invalidationReason: null,
+      isAccountingValid: true,
+      isEdited: false,
+      mutationType: null,
+      sourceSnapshotId: null,
       ticketIds: ["XL-0001", "XL-0002", "XL-0003", "XL-0004"],
       manualState: {
         quantityDrafts: { "XL-0001:NORMAL": "3" },
@@ -128,6 +114,69 @@ describe("ticket analizer history", () => {
     });
     expect(ticket.unitCost).toBe(123);
     expect(await prisma.fabricationTicket.count()).toBe(1);
+  });
+
+  it("updates the existing non-accounting snapshot for manual edits with the same XL tickets", async () => {
+    const original = await service.saveTicketAnalizerHistory(createHistoryInput());
+    const edited = await service.saveTicketAnalizerHistory(
+      createHistoryInput({
+        invalidationReason: "REAL_TICKET_DATA_MODIFIED",
+        isAccountingValid: false,
+        isEdited: true,
+        mutationType: "UNIT_PRICE_CHANGED",
+        sourceSnapshotId: original.id,
+        summary: {
+          grossSale: 3000,
+          netProfit: 2400,
+          profitBeforeTaxes: 2700,
+          taxesAndFees: 300,
+          totalCost: 300,
+          totalQuantity: 6
+        }
+      })
+    );
+    const editedAgain = await service.saveTicketAnalizerHistory(
+      createHistoryInput({
+        invalidationReason: "REAL_TICKET_DATA_MODIFIED",
+        isAccountingValid: false,
+        isEdited: true,
+        mutationType: "QUANTITY_BY_QUALITY_CHANGED",
+        sourceSnapshotId: original.id,
+        summary: {
+          grossSale: 4000,
+          netProfit: 3200,
+          profitBeforeTaxes: 3600,
+          taxesAndFees: 400,
+          totalCost: 400,
+          totalQuantity: 7
+        }
+      })
+    );
+
+    const records = await service.listTicketAnalizerHistory();
+    const accountingRecords = records.filter((record) => record.isAccountingValid);
+    const editedRecords = records.filter((record) => record.isEdited);
+    const storedEdited = await service.getTicketAnalizerHistory(edited.id);
+
+    expect(edited.id).not.toBe(original.id);
+    expect(editedAgain.id).toBe(edited.id);
+    expect(records).toHaveLength(2);
+    expect(accountingRecords).toEqual([expect.objectContaining({ id: original.id, isEdited: false })]);
+    expect(editedRecords).toEqual([
+      expect.objectContaining({
+        id: edited.id,
+        invalidationReason: "REAL_TICKET_DATA_MODIFIED",
+        isAccountingValid: false,
+        mutationType: "QUANTITY_BY_QUALITY_CHANGED",
+        sourceSnapshotId: original.id,
+        summary: expect.objectContaining({ netProfit: 3200, totalQuantity: 7 })
+      })
+    ]);
+    expect(storedEdited).toMatchObject({
+      id: edited.id,
+      mutationType: "QUANTITY_BY_QUALITY_CHANGED",
+      summary: { netProfit: 3200, totalQuantity: 7 }
+    });
   });
 });
 
@@ -1408,5 +1457,43 @@ function closeInput(ticketId: string, overrides: Partial<CloseTicketInput> = {})
     leftoverClothsQuantity: 1,
     producedStaffs: [{ quality: StaffQuality.NORMAL, quantity: 6 }],
     ...overrides
+  };
+}
+
+function createHistoryInput(overrides: Partial<TicketAnalizerHistoryInput> = {}): TicketAnalizerHistoryInput {
+  const base: TicketAnalizerHistoryInput = {
+    ticketIds: ["XL-0001", "XL-0002", "XL-0003", "XL-0004"],
+    manualState: {
+      effectiveSaleValueByPower: { "1560": 500000 },
+      effectiveSaleValueExceptions: { "T8:NORMAL": 800000 },
+      effectiveTaxPercentages: { saleOrderTaxPercent: 1.5, saleTaxPercent: 4 },
+      exceptionInputs: { "T8:NORMAL": "800.000" },
+      quantityDrafts: { "XL-0001:NORMAL": "2" },
+      saleInputsByPower: { "1560": "500.000" },
+      saleOrderTaxInput: "1.5",
+      saleTaxInput: "4",
+      unitCostDrafts: { "XL-0001": "123" }
+    },
+    summary: {
+      grossSale: 1000,
+      netProfit: 800,
+      profitBeforeTaxes: 900,
+      taxesAndFees: 100,
+      totalCost: 100,
+      totalQuantity: 4
+    }
+  };
+
+  return {
+    ...base,
+    ...overrides,
+    manualState: {
+      ...base.manualState,
+      ...overrides.manualState
+    },
+    summary: {
+      ...base.summary,
+      ...overrides.summary
+    }
   };
 }

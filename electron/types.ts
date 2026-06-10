@@ -214,14 +214,30 @@ export interface TicketAnalizerHistorySummary {
   totalQuantity: number;
 }
 
+export type TicketAnalizerHistoryInvalidationReason = "REAL_TICKET_DATA_MODIFIED";
+export type TicketAnalizerHistoryMutationType =
+  | "UNIT_PRICE_CHANGED"
+  | "QUANTITY_BY_QUALITY_CHANGED"
+  | "REAL_TICKET_DATA_MODIFIED";
+
 export interface TicketAnalizerHistoryInput {
+  invalidationReason?: TicketAnalizerHistoryInvalidationReason | null;
+  isAccountingValid?: boolean;
+  isEdited?: boolean;
   manualState: TicketAnalizerHistoryManualState;
+  mutationType?: TicketAnalizerHistoryMutationType | null;
+  sourceSnapshotId?: string | null;
   summary: TicketAnalizerHistorySummary;
   ticketIds: string[];
 }
 
 export interface TicketAnalizerHistoryView extends TicketAnalizerHistoryInput {
   id: string;
+  invalidationReason: TicketAnalizerHistoryInvalidationReason | null;
+  isAccountingValid: boolean;
+  isEdited: boolean;
+  mutationType: TicketAnalizerHistoryMutationType | null;
+  sourceSnapshotId: string | null;
   createdAt: string;
 }
 
