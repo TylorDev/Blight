@@ -1,6 +1,7 @@
 node_modules
 .env
 dist
+dist-prisma-test/
 dist-electron
 release
 *.blockmap
