@@ -150,6 +150,8 @@ export const craftingTaxMultipliers: Record<AppTier, number> = {
   T8: 1.2729
 };
 
+export type ManualLeftoverQuantities = Partial<Record<Extract<Category, "TABLAS" | "TELAS">, number>>;
+
 export type FilterValue<T extends string> = T | "TODOS";
 export type BulkPurchaseDraft = Record<Category, PurchaseCalculationState>;
 
@@ -170,7 +172,8 @@ export function getTicketRecipeId(ticket: { recipeId?: RecipeId | null; staffQua
 export function getEffectiveRecipeMaterials(
   tier: AppTier,
   recipeId: RecipeId = defaultRecipeId,
-  leftoverCredits: LeftoverCreditView[] = []
+  leftoverCredits: LeftoverCreditView[] = [],
+  manualLeftovers: ManualLeftoverQuantities = {}
 ) {
   const leftoverQuantities = leftoverCredits.reduce(
     (totals, credit) => {
@@ -181,6 +184,8 @@ export function getEffectiveRecipeMaterials(
     },
     { TABLAS: 0, TELAS: 0 }
   );
+  leftoverQuantities.TABLAS += normalizeLeftoverQuantity(manualLeftovers.TABLAS);
+  leftoverQuantities.TELAS += normalizeLeftoverQuantity(manualLeftovers.TELAS);
 
   return [
     ...ticketRecipes[recipeId].materials.map((material) => {
@@ -202,11 +207,12 @@ export function calculateTicketPreview(
   tier: AppTier,
   rawTax: number,
   recipeId: RecipeId = defaultRecipeId,
-  leftoverCredits: LeftoverCreditView[] = []
+  leftoverCredits: LeftoverCreditView[] = [],
+  manualLeftovers: ManualLeftoverQuantities = {}
 ) {
   const taxValue = Number.isFinite(rawTax) && rawTax > 0 ? rawTax : 0;
   const recipe = ticketRecipes[recipeId];
-  const materials = getEffectiveRecipeMaterials(tier, recipeId, leftoverCredits).map((material) => {
+  const materials = getEffectiveRecipeMaterials(tier, recipeId, leftoverCredits, manualLeftovers).map((material) => {
     const stockItem = stock.find((item) => item.category === material.category && item.tier === tier);
     const averageCost = stockItem?.averageCost ?? 0;
     return {
@@ -230,6 +236,10 @@ export function calculateTicketPreview(
     investmentTotal,
     unitCost: investmentTotal / recipe.staffQuantity
   };
+}
+
+function normalizeLeftoverQuantity(quantity: number | undefined) {
+  return Number.isFinite(quantity) && quantity && quantity > 0 ? Math.trunc(quantity) : 0;
 }
 
 export function getDefaultTicketTax(tickets: FabricationTicketView[]) {

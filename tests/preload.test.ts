@@ -55,7 +55,13 @@ describe("preload", () => {
     await api.createPurchase({ category: "TABLAS", tier: "T5", quantity: 1, total: 100 });
     await api.createBulkPurchase({ tier: "T5", purchases: [{ category: "TABLAS", quantity: 1, total: 100 }] });
     await api.listPurchaseInvoices();
-    await api.createTicket({ tier: "T5", tax: 100, recipeId: "RECETA_2" });
+    await api.createTicket({
+      tier: "T5",
+      tax: 100,
+      recipeId: "RECETA_2",
+      leftoverTablesQuantity: 10,
+      leftoverClothsQuantity: 7
+    });
     await api.deleteOpenTicket("ticket-1");
     await api.listTickets();
     await api.listOpenTickets();
@@ -110,7 +116,16 @@ describe("preload", () => {
       ["purchase:create", { category: "TABLAS", tier: "T5", quantity: 1, total: 100 }],
       ["purchase:createBulk", { tier: "T5", purchases: [{ category: "TABLAS", quantity: 1, total: 100 }] }],
       ["purchase:listInvoices"],
-      ["ticket:create", { tier: "T5", tax: 100, recipeId: "RECETA_2" }],
+      [
+        "ticket:create",
+        {
+          tier: "T5",
+          tax: 100,
+          recipeId: "RECETA_2",
+          leftoverTablesQuantity: 10,
+          leftoverClothsQuantity: 7
+        }
+      ],
       ["ticket:deleteOpen", "ticket-1"],
       ["ticket:list"],
       ["ticket:listOpen"],

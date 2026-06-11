@@ -980,6 +980,74 @@ describe("tickets", () => {
     expect(thirdClose.ticket?.appliedLeftoverDiscount).toBe(2000);
   });
 
+  it("applies manual leftover discount from current stock without changing stock until close", async () => {
+    await seedRecipeStock(Tier.T5, 100, 1000);
+
+    const ticket = await service.createTicket({
+      tier: Tier.T5,
+      tax: 100,
+      recipeId: "RECETA_1",
+      leftoverTablesQuantity: 10,
+      leftoverClothsQuantity: 7
+    });
+    const stockBeforeClose = await service.listStock();
+    const result = await service.closeTicket(closeInput(ticket.id));
+    const stockAfterClose = await service.listStock();
+
+    expect(ticket.appliedManualLeftoverTablesQuantity).toBe(10);
+    expect(ticket.appliedManualLeftoverTablesValue).toBe(10000);
+    expect(ticket.appliedManualLeftoverClothsQuantity).toBe(7);
+    expect(ticket.appliedManualLeftoverClothsValue).toBe(7000);
+    expect(ticket.appliedLeftoverDiscount).toBe(17000);
+    expect(stockItem(stockBeforeClose, StockCategory.TABLAS, Tier.T5).quantity).toBe(100);
+    expect(stockItem(stockBeforeClose, StockCategory.TELAS, Tier.T5).quantity).toBe(100);
+    expect(result.ok).toBe(true);
+    expect(result.ticket?.consumptions.find((item) => item.category === StockCategory.TABLAS)?.quantity).toBe(63);
+    expect(result.ticket?.consumptions.find((item) => item.category === StockCategory.TELAS)?.quantity).toBe(37);
+    expect(stockItem(stockAfterClose, StockCategory.TABLAS, Tier.T5).quantity).toBe(37);
+    expect(stockItem(stockAfterClose, StockCategory.TELAS, Tier.T5).quantity).toBe(63);
+  });
+
+  it("rejects manual leftover discount when pending leftovers already exist", async () => {
+    await seedRecipeStock(Tier.T5, 220, 1000);
+
+    const firstTicket = await createRecipe1Ticket(Tier.T5);
+    await service.closeTicket(closeInput(firstTicket.id, { leftoverTablesQuantity: 12, leftoverClothsQuantity: 7 }));
+
+    await expect(
+      service.createTicket({
+        tier: Tier.T5,
+        tax: 100,
+        recipeId: "RECETA_1",
+        leftoverTablesQuantity: 10,
+        leftoverClothsQuantity: 7
+      })
+    ).rejects.toThrow("sobras pendientes");
+  });
+
+  it("rejects manual leftovers greater than the selected recipe", async () => {
+    await seedRecipeStock(Tier.T5, 100, 1000);
+
+    await expect(
+      service.createTicket({
+        tier: Tier.T5,
+        tax: 100,
+        recipeId: "RECETA_1",
+        leftoverTablesQuantity: 74,
+        leftoverClothsQuantity: 7
+      })
+    ).rejects.toThrow("exceder");
+    await expect(
+      service.createTicket({
+        tier: Tier.T5,
+        tax: 100,
+        recipeId: "RECETA_1",
+        leftoverTablesQuantity: 10,
+        leftoverClothsQuantity: 45
+      })
+    ).rejects.toThrow("exceder");
+  });
+
   it("uses effective leftover-adjusted quantities when checking missing stock", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
 

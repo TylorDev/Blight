@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const originalArgv = process.argv;
+
 const expectedChannels = [
   "stock:list",
   "stock:clear",
@@ -32,6 +34,7 @@ beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
   delete process.env.ELECTRON_RENDERER_URL;
+  process.argv = originalArgv;
 });
 
 describe("main process", () => {
@@ -75,18 +78,85 @@ describe("main process", () => {
     expect(windows[0].loadURL).toHaveBeenCalledWith("http://localhost:5173");
     expect(windows[0].loadFile).not.toHaveBeenCalled();
   });
+
+  it("logs startup failures before window creation when --logs is present", async () => {
+    process.argv = [...originalArgv, "--logs"];
+    const startupError = new Error("Cannot find module '.prisma/client/default'");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { BrowserWindow, app } = installMainMocks({ initializeDatabaseError: startupError });
+
+    await importMain();
+
+    expect(BrowserWindow).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining("Fatal startup error before window creation:")
+    );
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining(startupError.message));
+    expect(app.quit).toHaveBeenCalledTimes(1);
+
+    consoleError.mockRestore();
+  });
+
+  it("logs inventory-service import failures before window creation when --logs is present", async () => {
+    process.argv = [...originalArgv, "--logs"];
+    const startupError = new Error("Cannot find module '.prisma/client/default'");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { BrowserWindow, app } = installMainMocks({ inventoryServiceImportError: startupError });
+
+    await importMain();
+
+    expect(BrowserWindow).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining("Fatal startup error before window creation:")
+    );
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining(startupError.message));
+    expect(app.quit).toHaveBeenCalledTimes(1);
+
+    consoleError.mockRestore();
+  });
+
+  it("rethrows startup failures before window creation without --logs", async () => {
+    const startupError = new Error("Cannot find module '.prisma/client/default'");
+    const { BrowserWindow, startup } = installMainMocks({ initializeDatabaseError: startupError });
+
+    await importMain();
+
+    await expect(startup.promise).rejects.toThrow(startupError);
+    expect(BrowserWindow).not.toHaveBeenCalled();
+  });
 });
 
-function installMainMocks(rendererUrl?: string) {
+type MainMockOptions =
+  | string
+  | {
+      rendererUrl?: string;
+      initializeDatabaseError?: Error;
+      inventoryServiceImportError?: Error;
+    };
+
+function installMainMocks(options?: MainMockOptions) {
+  const rendererUrl = typeof options === "string" ? options : options?.rendererUrl;
+  const initializeDatabaseError = typeof options === "string" ? undefined : options?.initializeDatabaseError;
+  const inventoryServiceImportError = typeof options === "string" ? undefined : options?.inventoryServiceImportError;
+
   if (rendererUrl) {
     process.env.ELECTRON_RENDERER_URL = rendererUrl;
   }
 
+  const startup: { promise?: Promise<unknown> } = {};
   const ipcMain = {
     handle: vi.fn()
   };
   const app = {
-    whenReady: vi.fn(() => Promise.resolve()),
+    whenReady: vi.fn(() => ({
+      then: vi.fn((onReady: () => unknown) => {
+        startup.promise = Promise.resolve().then(onReady);
+        return startup.promise;
+      })
+    })),
+    getPath: vi.fn(() => "C:\\Users\\Jimbo\\AppData\\Roaming\\Blight"),
     on: vi.fn(),
     quit: vi.fn()
   };
@@ -123,33 +193,45 @@ function installMainMocks(rendererUrl?: string) {
   });
 
   vi.doMock("electron", () => ({ app, BrowserWindow, ipcMain }));
-  vi.doMock("../electron/inventory-service", () => ({
-    adjustStaffStock: vi.fn(),
-    closeTicket: vi.fn(),
-    clearHistory: vi.fn(),
-    clearStock: vi.fn(),
-    createBulkPurchase: vi.fn(),
-    createPurchase: vi.fn(),
-    listPurchaseInvoices: vi.fn(),
-    createTicket: vi.fn(),
-    deleteOpenTicket: vi.fn(),
-    disconnectPrisma: vi.fn(),
-    initializeDatabase: vi.fn(() => Promise.resolve()),
-    listHistory: vi.fn(),
-    listOpenTickets: vi.fn(),
-    listPendingLeftoverCredits: vi.fn(),
-    listStaffMovements: vi.fn(),
-    listStaffStock: vi.fn(),
-    listStaffStockLots: vi.fn(),
-    listStock: vi.fn(),
-    listTickets: vi.fn(),
-    listTicketAnalizerHistory: vi.fn(),
-    saveTicketAnalizerHistory: vi.fn(),
-    getTicketAnalizerHistory: vi.fn(),
-    sellStaffStock: vi.fn()
-  }));
+  vi.doMock("../electron/inventory-service", () => {
+    if (inventoryServiceImportError) {
+      throw inventoryServiceImportError;
+    }
 
-  return { app, BrowserWindow, ipcMain, windows };
+    return {
+      adjustStaffStock: vi.fn(),
+      closeTicket: vi.fn(),
+      clearHistory: vi.fn(),
+      clearStock: vi.fn(),
+      createBulkPurchase: vi.fn(),
+      createPurchase: vi.fn(),
+      listPurchaseInvoices: vi.fn(),
+      createTicket: vi.fn(),
+      deleteOpenTicket: vi.fn(),
+      disconnectPrisma: vi.fn(),
+      initializeDatabase: vi.fn(() => {
+        if (initializeDatabaseError) {
+          return Promise.reject(initializeDatabaseError);
+        }
+
+        return Promise.resolve();
+      }),
+      listHistory: vi.fn(),
+      listOpenTickets: vi.fn(),
+      listPendingLeftoverCredits: vi.fn(),
+      listStaffMovements: vi.fn(),
+      listStaffStock: vi.fn(),
+      listStaffStockLots: vi.fn(),
+      listStock: vi.fn(),
+      listTickets: vi.fn(),
+      listTicketAnalizerHistory: vi.fn(),
+      saveTicketAnalizerHistory: vi.fn(),
+      getTicketAnalizerHistory: vi.fn(),
+      sellStaffStock: vi.fn()
+    };
+  });
+
+  return { app, BrowserWindow, ipcMain, windows, startup };
 }
 
 async function importMain() {

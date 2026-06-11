@@ -43,9 +43,21 @@ describe("ticket-store", () => {
     blight.createTicket.mockResolvedValue(createTicket());
     blight.listOpenTickets.mockResolvedValue(tickets);
 
-    await useTicketStore.getState().createTicket({ tier: "T5" as AppTier, tax: 100, recipeId: "RECETA_2" });
+    await useTicketStore.getState().createTicket({
+      tier: "T5" as AppTier,
+      tax: 100,
+      recipeId: "RECETA_2",
+      leftoverTablesQuantity: 10,
+      leftoverClothsQuantity: 7
+    });
 
-    expect(blight.createTicket).toHaveBeenCalledWith({ tier: "T5", tax: 100, recipeId: "RECETA_2" });
+    expect(blight.createTicket).toHaveBeenCalledWith({
+      tier: "T5",
+      tax: 100,
+      recipeId: "RECETA_2",
+      leftoverTablesQuantity: 10,
+      leftoverClothsQuantity: 7
+    });
     expect(blight.listOpenTickets).toHaveBeenCalledTimes(1);
     expect(useTicketStore.getState().missingMaterials).toEqual([]);
     expect(useTicketStore.getState().tickets).toEqual(tickets);

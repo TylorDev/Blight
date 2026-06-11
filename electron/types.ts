@@ -59,6 +59,10 @@ export interface FabricationTicketView {
   leftoverTablesValue: number;
   leftoverClothsQuantity: number;
   leftoverClothsValue: number;
+  appliedManualLeftoverTablesQuantity: number;
+  appliedManualLeftoverTablesValue: number;
+  appliedManualLeftoverClothsQuantity: number;
+  appliedManualLeftoverClothsValue: number;
   appliedLeftoverDiscount: number;
   investmentTotal: number;
   unitCost: number;
@@ -159,6 +163,8 @@ export interface CreateTicketInput {
   tax: number;
   recipeId?: RecipeId;
   idPrefix?: "XL";
+  leftoverTablesQuantity?: number;
+  leftoverClothsQuantity?: number;
 }
 
 export interface CloseTicketInput {

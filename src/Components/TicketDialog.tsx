@@ -1,7 +1,14 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { BadgeDollarSign, Factory, Gauge, Loader2, Plus, Sparkles, WandSparkles, X } from "lucide-react";
 import { CSSProperties, FormEvent, useEffect, useMemo, useState } from "react";
-import type { AppTier, CreateTicketInput, FabricationTicketView, LeftoverCreditView, RecipeId } from "../../electron/types";
+import type {
+  AppTier,
+  CreateTicketInput,
+  FabricationTicketView,
+  LeftoverCreditView,
+  RecipeId,
+  StockItemView
+} from "../../electron/types";
 import {
   calculateTicketPreview,
   categoryLabels,
@@ -94,6 +101,9 @@ export function TicketDialogForm({
   const [recipeId, setRecipeId] = useState<RecipeId>(defaultRecipeId);
   const [tax, setTax] = useState("");
   const [pendingLeftovers, setPendingLeftovers] = useState<LeftoverCreditView[]>([]);
+  const [manualLeftoverEnabled, setManualLeftoverEnabled] = useState(false);
+  const [manualLeftoverTablesQuantity, setManualLeftoverTablesQuantity] = useState("");
+  const [manualLeftoverClothsQuantity, setManualLeftoverClothsQuantity] = useState("");
   const [saving, setSaving] = useState(false);
   const [loadingLeftovers, setLoadingLeftovers] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,11 +115,30 @@ export function TicketDialogForm({
   const selectedRecipeId = fixedRecipeId ?? recipeId;
   const defaultTax = useMemo(() => getDefaultTicketTax(closedTickets), [closedTickets]);
   const effectiveTax = fixedTax ?? (tax === "" ? defaultTax : parseThousands(tax));
+  const manualLeftovers = useMemo(
+    () =>
+      manualLeftoverEnabled
+        ? {
+            TABLAS: parseThousands(manualLeftoverTablesQuantity),
+            TELAS: parseThousands(manualLeftoverClothsQuantity)
+          }
+        : {},
+    [manualLeftoverClothsQuantity, manualLeftoverEnabled, manualLeftoverTablesQuantity]
+  );
   const preview = useMemo(
-    () => calculateTicketPreview(stock, selectedTier, effectiveTax, selectedRecipeId, pendingLeftovers),
-    [effectiveTax, pendingLeftovers, selectedRecipeId, selectedTier, stock]
+    () => calculateTicketPreview(stock, selectedTier, effectiveTax, selectedRecipeId, pendingLeftovers, manualLeftovers),
+    [effectiveTax, manualLeftovers, pendingLeftovers, selectedRecipeId, selectedTier, stock]
   );
   const pendingLeftoverTotal = pendingLeftovers.reduce((total, credit) => total + credit.value, 0);
+  const manualLeftoverTotal = useMemo(
+    () =>
+      manualLeftoverEnabled
+        ? getStockAverageCost(stock, selectedTier, "TABLAS") * (manualLeftovers.TABLAS ?? 0) +
+          getStockAverageCost(stock, selectedTier, "TELAS") * (manualLeftovers.TELAS ?? 0)
+        : 0,
+    [manualLeftoverEnabled, manualLeftovers, selectedTier, stock]
+  );
+  const canApplyManualLeftovers = !loadingLeftovers && pendingLeftovers.length === 0;
   const recipeLocked = Boolean(fixedRecipeId);
   const taxLocked = fixedTax !== undefined;
   const tierLocked = Boolean(fixedTier);
@@ -129,15 +158,45 @@ export function TicketDialogForm({
       .finally(() => setLoadingLeftovers(false));
   }, [active, listPendingLeftoverCredits, selectedTier]);
 
+  useEffect(() => {
+    if (!active || canApplyManualLeftovers) {
+      return;
+    }
+
+    setManualLeftoverEnabled(false);
+    setManualLeftoverTablesQuantity("");
+    setManualLeftoverClothsQuantity("");
+  }, [active, canApplyManualLeftovers]);
+
+  useEffect(() => {
+    setManualLeftoverEnabled(false);
+    setManualLeftoverTablesQuantity("");
+    setManualLeftoverClothsQuantity("");
+  }, [selectedRecipeId, selectedTier]);
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSaving(true);
     setError(null);
     try {
-      const ticket = await createTicket({ tier: selectedTier, tax: effectiveTax, recipeId: selectedRecipeId, idPrefix });
+      const ticket = await createTicket({
+        tier: selectedTier,
+        tax: effectiveTax,
+        recipeId: selectedRecipeId,
+        idPrefix,
+        ...(manualLeftoverEnabled
+          ? {
+              leftoverTablesQuantity: manualLeftovers.TABLAS ?? 0,
+              leftoverClothsQuantity: manualLeftovers.TELAS ?? 0
+            }
+          : {})
+      });
       if (!taxLocked) {
         setTax("");
       }
+      setManualLeftoverEnabled(false);
+      setManualLeftoverTablesQuantity("");
+      setManualLeftoverClothsQuantity("");
       await onCreated?.(ticket);
     } catch (currentError) {
       setError(currentError instanceof Error ? currentError.message : "No se pudo guardar.");
@@ -230,6 +289,58 @@ export function TicketDialogForm({
         </label>
       </div>
       {loadingLeftovers ? <p className="ticket-dialog__copy">Buscando sobras disponibles...</p> : null}
+      {canApplyManualLeftovers ? (
+        <section className="ticket-dialog__section">
+          <label className="ticket-dialog__check">
+            <input
+              checked={manualLeftoverEnabled}
+              onChange={(event) => {
+                setManualLeftoverEnabled(event.target.checked);
+                if (!event.target.checked) {
+                  setManualLeftoverTablesQuantity("");
+                  setManualLeftoverClothsQuantity("");
+                }
+              }}
+              type="checkbox"
+            />
+            <span>
+              <strong>Aplicar descuento por materiales sobrantes</strong>
+              <small>Usa el precio actual de tablas y telas en stock.</small>
+            </span>
+          </label>
+          {manualLeftoverEnabled ? (
+            <>
+              <div className="ticket-dialog__inputs ticket-dialog__inputs--leftovers">
+                <label className="ticket-dialog__field">
+                  <span>Cantidad de tablas sobrantes</span>
+                  <input
+                    value={manualLeftoverTablesQuantity}
+                    onChange={(event) => setManualLeftoverTablesQuantity(normalizeThousandsInput(event.target.value))}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9.]*"
+                    placeholder="0"
+                  />
+                </label>
+                <label className="ticket-dialog__field">
+                  <span>Cantidad de telas sobrantes</span>
+                  <input
+                    value={manualLeftoverClothsQuantity}
+                    onChange={(event) => setManualLeftoverClothsQuantity(normalizeThousandsInput(event.target.value))}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9.]*"
+                    placeholder="0"
+                  />
+                </label>
+              </div>
+              <p className="ticket-dialog__copy">
+                Descuento estimado por sobrantes: {formatCurrency(manualLeftoverTotal)}
+              </p>
+            </>
+          ) : null}
+        </section>
+      ) : null}
       {!loadingLeftovers && pendingLeftovers.length > 0 ? (
         <div className="leftover-note">
           <div className="leftover-note__head">
@@ -258,6 +369,7 @@ export function TicketDialogForm({
           tier={selectedTier}
           recipeId={selectedRecipeId}
           leftoverCredits={pendingLeftovers}
+          manualLeftovers={manualLeftovers}
         />
       </section>
       <TicketPreview preview={preview} />
@@ -273,4 +385,8 @@ export function TicketDialogForm({
       </div>
     </form>
   );
+}
+
+function getStockAverageCost(stock: StockItemView[], tier: AppTier, category: "TABLAS" | "TELAS") {
+  return stock.find((item) => item.tier === tier && item.category === category)?.averageCost ?? 0;
 }

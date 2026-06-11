@@ -47,6 +47,10 @@ async function main() {
       "leftoverTablesValue" REAL NOT NULL DEFAULT 0,
       "leftoverClothsQuantity" INTEGER NOT NULL DEFAULT 0,
       "leftoverClothsValue" REAL NOT NULL DEFAULT 0,
+      "appliedManualLeftoverTablesQuantity" INTEGER NOT NULL DEFAULT 0,
+      "appliedManualLeftoverTablesValue" REAL NOT NULL DEFAULT 0,
+      "appliedManualLeftoverClothsQuantity" INTEGER NOT NULL DEFAULT 0,
+      "appliedManualLeftoverClothsValue" REAL NOT NULL DEFAULT 0,
       "appliedLeftoverDiscount" REAL NOT NULL DEFAULT 0,
       "investmentTotal" REAL NOT NULL DEFAULT 0,
       "unitCost" REAL NOT NULL DEFAULT 0,
@@ -66,6 +70,10 @@ async function main() {
   await addColumnIfMissing("FabricationTicket", "leftoverTablesValue", "REAL NOT NULL DEFAULT 0");
   await addColumnIfMissing("FabricationTicket", "leftoverClothsQuantity", "INTEGER NOT NULL DEFAULT 0");
   await addColumnIfMissing("FabricationTicket", "leftoverClothsValue", "REAL NOT NULL DEFAULT 0");
+  await addColumnIfMissing("FabricationTicket", "appliedManualLeftoverTablesQuantity", "INTEGER NOT NULL DEFAULT 0");
+  await addColumnIfMissing("FabricationTicket", "appliedManualLeftoverTablesValue", "REAL NOT NULL DEFAULT 0");
+  await addColumnIfMissing("FabricationTicket", "appliedManualLeftoverClothsQuantity", "INTEGER NOT NULL DEFAULT 0");
+  await addColumnIfMissing("FabricationTicket", "appliedManualLeftoverClothsValue", "REAL NOT NULL DEFAULT 0");
   await addColumnIfMissing("FabricationTicket", "appliedLeftoverDiscount", "REAL NOT NULL DEFAULT 0");
   await addColumnIfMissing("FabricationTicket", "investmentTotal", "REAL NOT NULL DEFAULT 0");
   await addColumnIfMissing("FabricationTicket", "unitCost", "REAL NOT NULL DEFAULT 0");

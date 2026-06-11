@@ -32,11 +32,43 @@ describe("app-data", () => {
     expect(preview.materials.find((material) => material.category === "TELAS")?.quantity).toBe(37);
   });
 
+  it("reduces ticket preview materials with manual leftovers", () => {
+    const preview = calculateTicketPreview(
+      [
+        createStockItem({ category: "TABLAS", quantity: 100, averageCost: 1000 }),
+        createStockItem({ category: "TELAS", quantity: 100, averageCost: 2000 }),
+        createStockItem({ category: "ARTEFACTOS", quantity: 100, averageCost: 3000 }),
+        createStockItem({ category: "DIARIOS_VACIOS", quantity: 100, averageCost: 4000 })
+      ],
+      "T5",
+      100,
+      "RECETA_1",
+      [],
+      { TABLAS: 10, TELAS: 7 }
+    );
+
+    expect(preview.materials.find((material) => material.category === "TABLAS")).toMatchObject({
+      quantity: 63,
+      subtotal: 63000
+    });
+    expect(preview.materials.find((material) => material.category === "TELAS")).toMatchObject({
+      quantity: 37,
+      subtotal: 74000
+    });
+  });
+
   it("never reduces effective recipe materials below zero with pending leftovers", () => {
-    const preview = calculateTicketPreview([], "T5", 100, "RECETA_1", [
-      createLeftoverCredit({ category: "TABLAS", quantity: 100, value: 100000 }),
-      createLeftoverCredit({ category: "TELAS", quantity: 100, value: 100000 })
-    ]);
+    const preview = calculateTicketPreview(
+      [],
+      "T5",
+      100,
+      "RECETA_1",
+      [
+        createLeftoverCredit({ category: "TABLAS", quantity: 50, value: 50000 }),
+        createLeftoverCredit({ category: "TELAS", quantity: 50, value: 50000 })
+      ],
+      { TABLAS: 50, TELAS: 50 }
+    );
 
     expect(preview.materials.find((material) => material.category === "TABLAS")?.quantity).toBe(0);
     expect(preview.materials.find((material) => material.category === "TELAS")?.quantity).toBe(0);

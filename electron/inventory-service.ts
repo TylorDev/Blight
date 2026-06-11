@@ -149,6 +149,30 @@ export function createInventoryService(prisma: PrismaClient) {
     await addColumnIfMissing(prisma, "FabricationTicket", "leftoverTablesValue", "REAL NOT NULL DEFAULT 0");
     await addColumnIfMissing(prisma, "FabricationTicket", "leftoverClothsQuantity", "INTEGER NOT NULL DEFAULT 0");
     await addColumnIfMissing(prisma, "FabricationTicket", "leftoverClothsValue", "REAL NOT NULL DEFAULT 0");
+    await addColumnIfMissing(
+      prisma,
+      "FabricationTicket",
+      "appliedManualLeftoverTablesQuantity",
+      "INTEGER NOT NULL DEFAULT 0"
+    );
+    await addColumnIfMissing(
+      prisma,
+      "FabricationTicket",
+      "appliedManualLeftoverTablesValue",
+      "REAL NOT NULL DEFAULT 0"
+    );
+    await addColumnIfMissing(
+      prisma,
+      "FabricationTicket",
+      "appliedManualLeftoverClothsQuantity",
+      "INTEGER NOT NULL DEFAULT 0"
+    );
+    await addColumnIfMissing(
+      prisma,
+      "FabricationTicket",
+      "appliedManualLeftoverClothsValue",
+      "REAL NOT NULL DEFAULT 0"
+    );
     await addColumnIfMissing(prisma, "FabricationTicket", "appliedLeftoverDiscount", "REAL NOT NULL DEFAULT 0");
     await addColumnIfMissing(prisma, "FabricationTicket", "investmentTotal", "REAL NOT NULL DEFAULT 0");
     await addColumnIfMissing(prisma, "FabricationTicket", "unitCost", "REAL NOT NULL DEFAULT 0");
@@ -611,7 +635,17 @@ export function createInventoryService(prisma: PrismaClient) {
         where: { tier: input.tier, appliedToTicketId: null },
         orderBy: { createdAt: "asc" }
       });
-      const appliedLeftoverDiscount = pendingLeftoverCredits.reduce((total, credit) => total + credit.value, 0);
+      const manualLeftovers = normalizeCreateTicketLeftovers(input);
+      if (pendingLeftoverCredits.length > 0 && hasManualLeftovers(manualLeftovers)) {
+        throw new Error("No se puede aplicar descuento manual cuando ya hay sobras pendientes.");
+      }
+
+      validateManualLeftoversForRecipe(recipeId, input.tier, manualLeftovers);
+      const manualLeftoverValues = await calculateManualLeftoverValues(tx, input.tier, manualLeftovers);
+      const appliedLeftoverDiscount =
+        pendingLeftoverCredits.reduce((total, credit) => total + credit.value, 0) +
+        manualLeftoverValues.tablesValue +
+        manualLeftoverValues.clothsValue;
       const ticketId = input.idPrefix === "XL" ? await getNextXlTicketId(tx) : undefined;
       const createdTicket = await tx.fabricationTicket.create({
         data: {
@@ -622,6 +656,10 @@ export function createInventoryService(prisma: PrismaClient) {
           staffQuantity: selectedRecipe.staffQuantity,
           focusCost,
           craftingTax: calculateCraftingTax(input.tier, input.tax, selectedRecipe.staffQuantity),
+          appliedManualLeftoverTablesQuantity: manualLeftovers.tablesQuantity,
+          appliedManualLeftoverTablesValue: manualLeftoverValues.tablesValue,
+          appliedManualLeftoverClothsQuantity: manualLeftovers.clothsQuantity,
+          appliedManualLeftoverClothsValue: manualLeftoverValues.clothsValue,
           appliedLeftoverDiscount
         },
         include: { consumptions: true, appliedLeftoverCredits: true, producedStaffs: true }
@@ -761,7 +799,10 @@ export function createInventoryService(prisma: PrismaClient) {
 
       const producedStaffs = normalizeProducedStaffInput(input.producedStaffs, ticket.staffQuantity);
       const recipeId = getTicketRecipeId(ticket);
-      const materials = getEffectiveRecipe(recipeId, ticket.tier, ticket.appliedLeftoverCredits);
+      const materials = getEffectiveRecipe(recipeId, ticket.tier, ticket.appliedLeftoverCredits, {
+        [StockCategory.TABLAS]: ticket.appliedManualLeftoverTablesQuantity,
+        [StockCategory.TELAS]: ticket.appliedManualLeftoverClothsQuantity
+      });
       const tablesRequired = getRequiredQuantity(recipeId, ticket.tier, StockCategory.TABLAS);
       const clothsRequired = getRequiredQuantity(recipeId, ticket.tier, StockCategory.TELAS);
       if (input.leftoverTablesQuantity > tablesRequired || input.leftoverClothsQuantity > clothsRequired) {
@@ -1356,6 +1397,10 @@ function toTicketView(ticket: {
   leftoverTablesValue: number;
   leftoverClothsQuantity: number;
   leftoverClothsValue: number;
+  appliedManualLeftoverTablesQuantity: number;
+  appliedManualLeftoverTablesValue: number;
+  appliedManualLeftoverClothsQuantity: number;
+  appliedManualLeftoverClothsValue: number;
   appliedLeftoverDiscount: number;
   investmentTotal: number;
   unitCost: number;
@@ -1406,6 +1451,10 @@ function toTicketView(ticket: {
     leftoverTablesValue: ticket.leftoverTablesValue,
     leftoverClothsQuantity: ticket.leftoverClothsQuantity,
     leftoverClothsValue: ticket.leftoverClothsValue,
+    appliedManualLeftoverTablesQuantity: ticket.appliedManualLeftoverTablesQuantity,
+    appliedManualLeftoverTablesValue: ticket.appliedManualLeftoverTablesValue,
+    appliedManualLeftoverClothsQuantity: ticket.appliedManualLeftoverClothsQuantity,
+    appliedManualLeftoverClothsValue: ticket.appliedManualLeftoverClothsValue,
     appliedLeftoverDiscount: ticket.appliedLeftoverDiscount,
     investmentTotal: ticket.investmentTotal,
     unitCost: ticket.unitCost,
@@ -1634,10 +1683,78 @@ function getRequiredQuantity(recipeId: RecipeId, tier: Tier, category: StockCate
   return getRecipe(recipeId, tier).find((material) => material.category === category)?.quantity ?? 0;
 }
 
+type ManualLeftoversByCategory = Partial<Record<StockCategory, number>>;
+
+type NormalizedCreateTicketLeftovers = {
+  tablesQuantity: number;
+  clothsQuantity: number;
+};
+
+function normalizeCreateTicketLeftovers(input: CreateTicketInput): NormalizedCreateTicketLeftovers {
+  return {
+    tablesQuantity: normalizeNonNegativeQuantity(input.leftoverTablesQuantity),
+    clothsQuantity: normalizeNonNegativeQuantity(input.leftoverClothsQuantity)
+  };
+}
+
+function normalizeNonNegativeQuantity(value: number | undefined) {
+  if (value === undefined) {
+    return 0;
+  }
+
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error("Las sobras aplicadas deben ser mayores o iguales a cero.");
+  }
+
+  return Math.trunc(value);
+}
+
+function hasManualLeftovers(leftovers: NormalizedCreateTicketLeftovers) {
+  return leftovers.tablesQuantity > 0 || leftovers.clothsQuantity > 0;
+}
+
+function validateManualLeftoversForRecipe(
+  recipeId: RecipeId,
+  tier: Tier,
+  leftovers: NormalizedCreateTicketLeftovers
+) {
+  if (
+    leftovers.tablesQuantity > getRequiredQuantity(recipeId, tier, StockCategory.TABLAS) ||
+    leftovers.clothsQuantity > getRequiredQuantity(recipeId, tier, StockCategory.TELAS)
+  ) {
+    throw new Error("Las sobras aplicadas no pueden exceder la receta del ticket.");
+  }
+}
+
+async function calculateManualLeftoverValues(
+  tx: Prisma.TransactionClient,
+  tier: Tier,
+  leftovers: NormalizedCreateTicketLeftovers
+) {
+  if (!hasManualLeftovers(leftovers)) {
+    return { tablesValue: 0, clothsValue: 0 };
+  }
+
+  const stock = await tx.stockItem.findMany({
+    where: {
+      tier,
+      category: { in: [StockCategory.TABLAS, StockCategory.TELAS] }
+    }
+  });
+  const tablesAverageCost = stock.find((item) => item.category === StockCategory.TABLAS)?.averageCost ?? 0;
+  const clothsAverageCost = stock.find((item) => item.category === StockCategory.TELAS)?.averageCost ?? 0;
+
+  return {
+    tablesValue: leftovers.tablesQuantity * tablesAverageCost,
+    clothsValue: leftovers.clothsQuantity * clothsAverageCost
+  };
+}
+
 function getEffectiveRecipe(
   recipeId: RecipeId,
   tier: Tier,
-  appliedLeftoverCredits: Array<{ category: StockCategory; quantity: number }>
+  appliedLeftoverCredits: Array<{ category: StockCategory; quantity: number }>,
+  manualLeftovers: ManualLeftoversByCategory = {}
 ) {
   const leftoverQuantities = appliedLeftoverCredits.reduce(
     (totals, credit) => {
@@ -1651,6 +1768,8 @@ function getEffectiveRecipe(
       [StockCategory.TELAS]: 0
     }
   );
+  leftoverQuantities[StockCategory.TABLAS] += normalizeEffectiveLeftoverQuantity(manualLeftovers[StockCategory.TABLAS]);
+  leftoverQuantities[StockCategory.TELAS] += normalizeEffectiveLeftoverQuantity(manualLeftovers[StockCategory.TELAS]);
 
   return getRecipe(recipeId, tier).map((material) => {
     if (material.category !== StockCategory.TABLAS && material.category !== StockCategory.TELAS) {
@@ -1662,6 +1781,10 @@ function getEffectiveRecipe(
       quantity: Math.max(0, material.quantity - leftoverQuantities[material.category])
     };
   });
+}
+
+function normalizeEffectiveLeftoverQuantity(value: number | undefined) {
+  return Number.isFinite(value) && value && value > 0 ? Math.trunc(value) : 0;
 }
 
 function getRecipe(recipeId: RecipeId, tier: Tier) {
