@@ -1099,7 +1099,7 @@ describe("tickets", () => {
         id: credit.id,
         category: credit.category === StockCategory.TABLAS ? StockCategory.TELAS : StockCategory.TABLAS,
         quantity: credit.category === StockCategory.TABLAS ? 5 : 3,
-        value: credit.category === StockCategory.TABLAS ? 5000 : 3000
+        value: 999999
       }))
     });
     const persistedCredits = await prisma.ticketLeftoverCredit.findMany({
@@ -1159,6 +1159,65 @@ describe("tickets", () => {
     ).rejects.toThrow("mayor a cero");
 
     expect(await service.listPendingLeftoverCredits(Tier.T5)).toHaveLength(2);
+  });
+
+  it("calculates leftover override values from current stock even when payload value differs", async () => {
+    await seedRecipeStock(Tier.T5, 220, 1000);
+
+    const firstTicket = await createRecipe1Ticket(Tier.T5);
+    await service.closeTicket(closeInput(firstTicket.id, { leftoverTablesQuantity: 12, leftoverClothsQuantity: 7 }));
+    const pendingCredits = await service.listPendingLeftoverCredits(Tier.T5);
+
+    const ticket = await service.createTicket({
+      tier: Tier.T5,
+      tax: 100,
+      recipeId: "RECETA_1",
+      leftoverCreditOverrides: [
+        {
+          id: pendingCredits[0].id,
+          category: StockCategory.TELAS,
+          quantity: 5,
+          value: 1
+        }
+      ]
+    });
+    const updatedCredit = ticket.appliedLeftoverCredits.find((credit) => credit.id === pendingCredits[0].id);
+
+    expect(updatedCredit).toMatchObject({
+      category: StockCategory.TELAS,
+      quantity: 5,
+      value: 5000
+    });
+  });
+
+  it("uses zero for leftover override values when current stock has no average cost", async () => {
+    await seedRecipeStock(Tier.T5, 220, 1000);
+
+    const firstTicket = await createRecipe1Ticket(Tier.T5);
+    await service.closeTicket(closeInput(firstTicket.id, { leftoverTablesQuantity: 12, leftoverClothsQuantity: 7 }));
+    const pendingCredits = await service.listPendingLeftoverCredits(Tier.T5);
+    await service.clearStock();
+
+    const ticket = await service.createTicket({
+      tier: Tier.T5,
+      tax: 100,
+      recipeId: "RECETA_1",
+      leftoverCreditOverrides: [
+        {
+          id: pendingCredits[0].id,
+          category: StockCategory.TELAS,
+          quantity: 5,
+          value: 999999
+        }
+      ]
+    });
+    const updatedCredit = ticket.appliedLeftoverCredits.find((credit) => credit.id === pendingCredits[0].id);
+
+    expect(updatedCredit).toMatchObject({
+      category: StockCategory.TELAS,
+      quantity: 5,
+      value: 0
+    });
   });
 
   it("applies manual leftover discount from current stock without changing stock until close", async () => {

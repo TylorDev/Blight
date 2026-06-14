@@ -11,6 +11,7 @@ import type {
   StockItemView
 } from "../../electron/types";
 import {
+  calculateLeftoverCreditValue,
   calculateTicketPreview,
   categoryLabels,
   defaultRecipeId,
@@ -57,7 +58,6 @@ type TicketDialogFormProps = TicketDialogProps & {
 type LeftoverCreditDraft = {
   category: Extract<Category, "TABLAS" | "TELAS">;
   quantity: string;
-  value: string;
 };
 
 export function TicketDialog({ triggerLabel = "Ticket", ...formProps }: TicketDialogProps) {
@@ -147,10 +147,10 @@ export function TicketDialogForm({
           ...credit,
           category: draft.category,
           quantity: parseThousands(draft.quantity),
-          value: parseThousands(draft.value)
+          value: calculateLeftoverCreditValue(stock, selectedTier, draft.category, parseThousands(draft.quantity))
         };
       }),
-    [leftoverCreditDrafts, leftoverCreditEmergencyUnlocked, pendingLeftovers]
+    [leftoverCreditDrafts, leftoverCreditEmergencyUnlocked, pendingLeftovers, selectedTier, stock]
   );
   const preview = useMemo(
     () =>
@@ -241,7 +241,7 @@ export function TicketDialogForm({
                   id: credit.id,
                   category: draft.category,
                   quantity: parseThousands(draft.quantity),
-                  value: parseThousands(draft.value)
+                  value: calculateLeftoverCreditValue(stock, selectedTier, draft.category, parseThousands(draft.quantity))
                 };
               })
             }
@@ -447,16 +447,9 @@ export function TicketDialogForm({
                         pattern="[0-9.]*"
                       />
                       <input
-                        aria-label={`Valor de ${categoryLabels[credit.category]}`}
-                        value={draft.value}
-                        onChange={(event) =>
-                          updateLeftoverCreditDraft(credit.id, {
-                            value: normalizeThousandsInput(event.target.value)
-                          })
-                        }
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9.]*"
+                        aria-label={`Total calculado de ${categoryLabels[credit.category]}`}
+                        value={formatCurrency(credit.value)}
+                        readOnly
                       />
                     </>
                   ) : (
@@ -512,8 +505,7 @@ function createLeftoverCreditDrafts(credits: LeftoverCreditView[]) {
         credit.id,
         {
           category: credit.category as Extract<Category, "TABLAS" | "TELAS">,
-          quantity: formatThousands(String(credit.quantity)),
-          value: formatThousands(String(Math.trunc(credit.value)))
+          quantity: formatThousands(String(credit.quantity))
         }
       ])
   );

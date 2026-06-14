@@ -1868,16 +1868,22 @@ async function applyLeftoverCreditOverrides(
       throw new Error("La cantidad de la sobra debe ser mayor a cero.");
     }
 
-    if (!Number.isFinite(override.value) || override.value < 0) {
-      throw new Error("El valor de la sobra debe ser mayor o igual a cero.");
-    }
+    const stockItem = await tx.stockItem.findUnique({
+      where: {
+        category_tier: {
+          category: override.category,
+          tier: credit.tier
+        }
+      }
+    });
+    const value = Math.trunc(override.quantity) * (stockItem?.averageCost ?? 0);
 
     await tx.ticketLeftoverCredit.update({
       where: { id: credit.id },
       data: {
         category: override.category,
         quantity: Math.trunc(override.quantity),
-        value: override.value
+        value
       }
     });
   }

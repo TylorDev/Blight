@@ -19,6 +19,7 @@ export function EmergencyConfirmDialog({ children, description, onConfirm, title
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    event.stopPropagation();
     if (!confirmed) {
       return;
     }

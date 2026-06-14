@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  calculateLeftoverCreditValue,
   calculateTicketPreview,
   getRecipeFocusCost,
   getDefaultFilledDiariesDiscount,
@@ -11,6 +12,17 @@ import {
 import { createLeftoverCredit, createStockItem, createTicket } from "./mock-blight";
 
 describe("app-data", () => {
+  it("calculates leftover credit value from current stock average cost", () => {
+    const stock = [
+      createStockItem({ category: "TABLAS", tier: "T5", averageCost: 1000 }),
+      createStockItem({ category: "TELAS", tier: "T5", averageCost: 2000 })
+    ];
+
+    expect(calculateLeftoverCreditValue(stock, "T5", "TABLAS", 12)).toBe(12000);
+    expect(calculateLeftoverCreditValue(stock, "T5", "TELAS", 7)).toBe(14000);
+    expect(calculateLeftoverCreditValue([], "T5", "TABLAS", 12)).toBe(0);
+  });
+
   it("reduces ticket preview materials with pending leftovers", () => {
     const preview = calculateTicketPreview(
       [

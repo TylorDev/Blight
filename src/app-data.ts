@@ -238,6 +238,17 @@ export function calculateTicketPreview(
   };
 }
 
+export function calculateLeftoverCreditValue(
+  stock: StockItemView[],
+  tier: AppTier,
+  category: Extract<Category, "TABLAS" | "TELAS">,
+  quantity: number
+) {
+  const normalizedQuantity = normalizeLeftoverQuantity(quantity);
+  const averageCost = stock.find((item) => item.tier === tier && item.category === category)?.averageCost ?? 0;
+  return normalizedQuantity * averageCost;
+}
+
 function normalizeLeftoverQuantity(quantity: number | undefined) {
   return Number.isFinite(quantity) && quantity && quantity > 0 ? Math.trunc(quantity) : 0;
 }
