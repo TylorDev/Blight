@@ -5,6 +5,7 @@ import type {
   AdjustStaffStockInput,
   AppTier,
   CloseTicketInput,
+  CorrectPurchaseInvoiceLineInput,
   CreateBulkPurchaseInput,
   CreatePurchaseInput,
   CreateTicketInput,
@@ -144,6 +145,7 @@ async function bootstrapApp() {
       createBulkPurchase,
       createPurchase,
       createTicket,
+      correctPurchaseInvoiceLine,
       deleteOpenTicket,
       getTicketAnalizerHistory,
       initializeDatabase,
@@ -168,6 +170,9 @@ async function bootstrapApp() {
     ipcMain.handle("stock:clear", () => clearStock());
     ipcMain.handle("purchase:create", (_event, input: CreatePurchaseInput) => createPurchase(input));
     ipcMain.handle("purchase:createBulk", (_event, input: CreateBulkPurchaseInput) => createBulkPurchase(input));
+    ipcMain.handle("purchase:correctLine", (_event, input: CorrectPurchaseInvoiceLineInput) =>
+      correctPurchaseInvoiceLine(input)
+    );
     ipcMain.handle("purchase:listInvoices", () => listPurchaseInvoices());
     ipcMain.handle("ticket:create", (_event, input: CreateTicketInput) => createTicket(input));
     ipcMain.handle("ticket:deleteOpen", (_event, ticketId: string) => deleteOpenTicket(ticketId));

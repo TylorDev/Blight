@@ -433,7 +433,7 @@
 
 .leftover-note__head {
   display: grid;
-  grid-template-columns: 24px 1fr auto;
+  grid-template-columns: 24px 1fr auto auto;
   gap: 8px;
   align-items: center;
 
@@ -451,6 +451,26 @@
   span {
     color: #d4d4d8;
     font-size: 12px;
+  }
+}
+
+.leftover-note__emergency {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #7f1d1d;
+  border-radius: 6px;
+  padding: 7px 9px;
+  background: #1f0f0f;
+  color: #fecaca;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+
+  svg {
+    width: 14px;
+    height: 14px;
+    color: currentColor;
   }
 }
 
@@ -474,6 +494,17 @@
   b {
     color: #f4f4f5;
     font-size: 13px;
+  }
+
+  select,
+  input {
+    min-width: 0;
+    border: 1px solid #3f3f46;
+    border-radius: 6px;
+    padding: 7px 8px;
+    background: #09090b;
+    color: #f4f4f5;
+    font-size: 12px;
   }
 }
 

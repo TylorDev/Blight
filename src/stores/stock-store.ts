@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type {
   AppTier,
   Category,
+  CorrectPurchaseInvoiceLineInput,
   CreateBulkPurchaseInput,
   CreatePurchaseInput,
   StockItemView
@@ -22,6 +23,7 @@ interface StockStore {
   clearStock: () => Promise<void>;
   createPurchase: (input: CreatePurchaseInput) => Promise<void>;
   createBulkPurchase: (input: CreateBulkPurchaseInput) => Promise<void>;
+  correctPurchaseInvoiceLine: (input: CorrectPurchaseInvoiceLineInput) => Promise<void>;
 }
 
 export const useStockStore = create<StockStore>((set, get) => ({
@@ -77,6 +79,18 @@ export const useStockStore = create<StockStore>((set, get) => ({
       await usePurchaseStore.getState().loadPurchaseInvoices();
     } catch (currentError) {
       const error = currentError instanceof Error ? currentError.message : "No se pudo guardar.";
+      set({ error });
+      throw currentError;
+    }
+  },
+  correctPurchaseInvoiceLine: async (input) => {
+    set({ error: null });
+    try {
+      await window.blight.correctPurchaseInvoiceLine(input);
+      await get().loadStock();
+      await usePurchaseStore.getState().loadPurchaseInvoices();
+    } catch (currentError) {
+      const error = currentError instanceof Error ? currentError.message : "No se pudo corregir la factura.";
       set({ error });
       throw currentError;
     }

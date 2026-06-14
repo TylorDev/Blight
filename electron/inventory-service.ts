@@ -14,6 +14,7 @@ import type {
   AdjustStaffStockInput,
   CloseTicketInput,
   CloseTicketResult,
+  CorrectPurchaseInvoiceLineInput,
   CreateBulkPurchaseInput,
   CreatePurchaseInput,
   CreateTicketInput,
@@ -622,6 +623,66 @@ export function createInventoryService(prisma: PrismaClient) {
     return items.map(toStockView);
   }
 
+  async function correctPurchaseInvoiceLine(input: CorrectPurchaseInvoiceLineInput): Promise<PurchaseInvoiceView> {
+    validateCorrectPurchaseInvoiceLineInput(input);
+
+    const invoice = await prisma.$transaction(async (tx) => {
+      const movement = await tx.stockMovement.findFirst({
+        where: {
+          id: input.lineId,
+          type: "COMPRA",
+          purchaseInvoiceId: input.invoiceId
+        }
+      });
+
+      if (!movement) {
+        throw new Error("Linea de factura no encontrada.");
+      }
+
+      const purchaseDeltas = new Map<string, { category: StockCategory; tier: Tier; quantity: number; total: number }>();
+      addPurchaseDelta(purchaseDeltas, movement.category, movement.tier, -movement.quantity, -movement.total);
+      addPurchaseDelta(purchaseDeltas, input.category, input.tier, Math.trunc(input.quantity), input.total);
+
+      for (const delta of purchaseDeltas.values()) {
+        await applyPurchaseDelta(tx, delta.category, delta.tier, delta.quantity, delta.total);
+      }
+
+      await tx.stockMovement.update({
+        where: { id: movement.id },
+        data: {
+          category: input.category,
+          tier: input.tier,
+          quantity: Math.trunc(input.quantity),
+          total: input.total
+        }
+      });
+
+      const movements = await tx.stockMovement.findMany({
+        where: {
+          purchaseInvoiceId: input.invoiceId,
+          type: "COMPRA"
+        }
+      });
+      const invoiceTotal = movements.reduce((total, currentMovement) => total + currentMovement.total, 0);
+
+      await tx.purchaseInvoice.update({
+        where: { id: input.invoiceId },
+        data: { total: invoiceTotal }
+      });
+
+      return tx.purchaseInvoice.findUniqueOrThrow({
+        where: { id: input.invoiceId },
+        include: {
+          movements: {
+            orderBy: { createdAt: "asc" }
+          }
+        }
+      });
+    });
+
+    return toPurchaseInvoiceView(invoice);
+  }
+
   async function createTicket(input: CreateTicketInput): Promise<FabricationTicketView> {
     if (input.tax < 1 || input.tax > 1000) {
       throw new Error("Tax debe estar entre 1 y 1000.");
@@ -631,10 +692,17 @@ export function createInventoryService(prisma: PrismaClient) {
     const focusCost = calculateFocusCost(selectedRecipe.staffQuantity);
 
     const ticket = await prisma.$transaction(async (tx) => {
-      const pendingLeftoverCredits = await tx.ticketLeftoverCredit.findMany({
+      let pendingLeftoverCredits = await tx.ticketLeftoverCredit.findMany({
         where: { tier: input.tier, appliedToTicketId: null },
         orderBy: { createdAt: "asc" }
       });
+      if (input.leftoverCreditOverrides?.length) {
+        await applyLeftoverCreditOverrides(tx, pendingLeftoverCredits, input.leftoverCreditOverrides);
+        pendingLeftoverCredits = await tx.ticketLeftoverCredit.findMany({
+          where: { tier: input.tier, appliedToTicketId: null },
+          orderBy: { createdAt: "asc" }
+        });
+      }
       const manualLeftovers = normalizeCreateTicketLeftovers(input);
       if (pendingLeftoverCredits.length > 0 && hasManualLeftovers(manualLeftovers)) {
         throw new Error("No se puede aplicar descuento manual cuando ya hay sobras pendientes.");
@@ -1131,6 +1199,7 @@ export function createInventoryService(prisma: PrismaClient) {
     sellStaffStock,
     createPurchase,
     createBulkPurchase,
+    correctPurchaseInvoiceLine,
     listPurchaseInvoices,
     createTicket,
     listTickets,
@@ -1165,6 +1234,8 @@ export const adjustStaffStock = (input: AdjustStaffStockInput) => getDefaultServ
 export const sellStaffStock = (input: SellStaffStockInput) => getDefaultService().sellStaffStock(input);
 export const createPurchase = (input: CreatePurchaseInput) => getDefaultService().createPurchase(input);
 export const createBulkPurchase = (input: CreateBulkPurchaseInput) => getDefaultService().createBulkPurchase(input);
+export const correctPurchaseInvoiceLine = (input: CorrectPurchaseInvoiceLineInput) =>
+  getDefaultService().correctPurchaseInvoiceLine(input);
 export const listPurchaseInvoices = () => getDefaultService().listPurchaseInvoices();
 export const createTicket = (input: CreateTicketInput) => getDefaultService().createTicket(input);
 export const listTickets = () => getDefaultService().listTickets();
@@ -1566,6 +1637,53 @@ async function backfillPurchaseInvoices(prisma: PrismaClient) {
   }
 }
 
+async function applyPurchaseDelta(
+  tx: Prisma.TransactionClient,
+  category: StockCategory,
+  tier: Tier,
+  quantityDelta: number,
+  totalDelta: number
+) {
+  const current = await tx.stockItem.upsert({
+    where: { category_tier: { category, tier } },
+    update: {},
+    create: { category, tier }
+  });
+  const nextQuantity = current.quantity + quantityDelta;
+  const nextTotal = current.total + totalDelta;
+
+  if (nextQuantity < 0 || nextTotal < -0.000001) {
+    throw new Error("La correccion no puede dejar stock negativo.");
+  }
+
+  const normalizedTotal = Math.max(0, nextTotal);
+  await tx.stockItem.update({
+    where: { id: current.id },
+    data: {
+      quantity: nextQuantity,
+      total: normalizedTotal,
+      averageCost: nextQuantity > 0 ? normalizedTotal / nextQuantity : 0
+    }
+  });
+}
+
+function addPurchaseDelta(
+  deltas: Map<string, { category: StockCategory; tier: Tier; quantity: number; total: number }>,
+  category: StockCategory,
+  tier: Tier,
+  quantity: number,
+  total: number
+) {
+  const key = `${category}:${tier}`;
+  const current = deltas.get(key);
+  deltas.set(key, {
+    category,
+    tier,
+    quantity: (current?.quantity ?? 0) + quantity,
+    total: (current?.total ?? 0) + total
+  });
+}
+
 function calculateCraftingTax(tier: Tier, tax: number, staffQuantity: number) {
   return tax * craftingTaxBase * craftingTaxMultipliers[tier] * staffQuantity;
 }
@@ -1667,6 +1785,28 @@ function validateStaffSale(input: SellStaffStockInput) {
   }
 }
 
+function validateCorrectPurchaseInvoiceLineInput(input: CorrectPurchaseInvoiceLineInput) {
+  if (!Number.isInteger(input.invoiceId) || input.invoiceId <= 0) {
+    throw new Error("Factura invalida.");
+  }
+
+  if (!input.lineId || input.lineId.trim() === "") {
+    throw new Error("Linea de factura invalida.");
+  }
+
+  if (!categories.includes(input.category) || !tiers.includes(input.tier)) {
+    throw new Error("Categoria o tier invalido.");
+  }
+
+  if (!Number.isFinite(input.quantity) || input.quantity <= 0 || Math.trunc(input.quantity) <= 0) {
+    throw new Error("La cantidad debe ser mayor a cero.");
+  }
+
+  if (!Number.isFinite(input.total) || input.total <= 0) {
+    throw new Error("El total debe ser mayor a cero.");
+  }
+}
+
 function normalizePurchaseVendor(vendor: PurchaseVendor | undefined) {
   if (!vendor) {
     return PurchaseVendor.PARTICULAR;
@@ -1695,6 +1835,52 @@ function normalizeCreateTicketLeftovers(input: CreateTicketInput): NormalizedCre
     tablesQuantity: normalizeNonNegativeQuantity(input.leftoverTablesQuantity),
     clothsQuantity: normalizeNonNegativeQuantity(input.leftoverClothsQuantity)
   };
+}
+
+async function applyLeftoverCreditOverrides(
+  tx: Prisma.TransactionClient,
+  pendingCredits: Array<{ id: string; category: StockCategory; tier: Tier; appliedToTicketId: string | null }>,
+  overrides: NonNullable<CreateTicketInput["leftoverCreditOverrides"]>
+) {
+  const pendingById = new Map(pendingCredits.map((credit) => [credit.id, credit]));
+  const seenIds = new Set<string>();
+
+  for (const override of overrides) {
+    if (!override.id || seenIds.has(override.id)) {
+      throw new Error("Credito de sobra invalido.");
+    }
+    seenIds.add(override.id);
+
+    const credit = pendingById.get(override.id);
+    if (!credit || credit.appliedToTicketId !== null) {
+      throw new Error("El credito de sobra no esta pendiente para este ticket.");
+    }
+
+    if (credit.category !== StockCategory.TABLAS && credit.category !== StockCategory.TELAS) {
+      throw new Error("Solo se pueden corregir sobras de tablas y telas.");
+    }
+
+    if (override.category !== StockCategory.TABLAS && override.category !== StockCategory.TELAS) {
+      throw new Error("Material de sobra invalido.");
+    }
+
+    if (!Number.isFinite(override.quantity) || override.quantity <= 0 || Math.trunc(override.quantity) <= 0) {
+      throw new Error("La cantidad de la sobra debe ser mayor a cero.");
+    }
+
+    if (!Number.isFinite(override.value) || override.value < 0) {
+      throw new Error("El valor de la sobra debe ser mayor o igual a cero.");
+    }
+
+    await tx.ticketLeftoverCredit.update({
+      where: { id: credit.id },
+      data: {
+        category: override.category,
+        quantity: Math.trunc(override.quantity),
+        value: override.value
+      }
+    });
+  }
 }
 
 function normalizeNonNegativeQuantity(value: number | undefined) {

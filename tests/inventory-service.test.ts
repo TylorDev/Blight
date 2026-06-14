@@ -411,6 +411,110 @@ describe("createBulkPurchase", () => {
   });
 });
 
+describe("correctPurchaseInvoiceLine", () => {
+  it("moves a purchase line to another material and recalculates stock and invoice total", async () => {
+    await service.createPurchase({
+      category: StockCategory.TABLAS,
+      tier: Tier.T5,
+      quantity: 100,
+      total: 10000
+    });
+    const invoice = (await service.listPurchaseInvoices())[0];
+
+    const corrected = await service.correctPurchaseInvoiceLine({
+      invoiceId: invoice.id,
+      lineId: invoice.lines[0].id,
+      category: StockCategory.TELAS,
+      tier: Tier.T5,
+      quantity: 100,
+      total: 20000
+    });
+    const stock = await service.listStock();
+
+    expect(corrected.total).toBe(20000);
+    expect(corrected.lines[0]).toMatchObject({
+      category: StockCategory.TELAS,
+      tier: Tier.T5,
+      quantity: 100,
+      total: 20000
+    });
+    expect(stockItem(stock, StockCategory.TABLAS, Tier.T5)).toMatchObject({ quantity: 0, total: 0, averageCost: 0 });
+    expect(stockItem(stock, StockCategory.TELAS, Tier.T5)).toMatchObject({
+      quantity: 100,
+      total: 20000,
+      averageCost: 200
+    });
+  });
+
+  it("updates quantity and total in the same material with weighted average intact", async () => {
+    await service.createPurchase({ category: StockCategory.TABLAS, tier: Tier.T5, quantity: 50, total: 5000 });
+    await service.createPurchase({ category: StockCategory.TABLAS, tier: Tier.T5, quantity: 100, total: 20000 });
+    const invoices = await service.listPurchaseInvoices();
+    const olderInvoice = invoices.find((invoice) => invoice.total === 5000);
+
+    await service.correctPurchaseInvoiceLine({
+      invoiceId: olderInvoice?.id ?? 0,
+      lineId: olderInvoice?.lines[0].id ?? "",
+      category: StockCategory.TABLAS,
+      tier: Tier.T5,
+      quantity: 25,
+      total: 2500
+    });
+    const stock = await service.listStock();
+
+    expect(stockItem(stock, StockCategory.TABLAS, Tier.T5)).toMatchObject({
+      quantity: 125,
+      total: 22500,
+      averageCost: 180
+    });
+  });
+
+  it("allows same-material corrections by applying the net stock delta", async () => {
+    await seedRecipeStock(Tier.T5, 100, 100);
+    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100, recipeId: "RECETA_1" });
+    await service.closeTicket(closeInput(ticket.id));
+    const invoice = (await service.listPurchaseInvoices()).find(
+      (currentInvoice) => currentInvoice.lines[0]?.category === StockCategory.TABLAS
+    );
+
+    await service.correctPurchaseInvoiceLine({
+      invoiceId: invoice?.id ?? 0,
+      lineId: invoice?.lines[0].id ?? "",
+      category: StockCategory.TABLAS,
+      tier: Tier.T5,
+      quantity: 90,
+      total: 9000
+    });
+    const stock = await service.listStock();
+
+    expect(stockItem(stock, StockCategory.TABLAS, Tier.T5)).toMatchObject({
+      quantity: 17,
+      total: 1700,
+      averageCost: 100
+    });
+  });
+
+  it("rejects corrections that would leave stock negative", async () => {
+    await seedRecipeStock(Tier.T5, 100, 100);
+    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100, recipeId: "RECETA_1" });
+    await service.closeTicket(closeInput(ticket.id));
+    const invoice = (await service.listPurchaseInvoices()).find(
+      (currentInvoice) => currentInvoice.lines[0]?.category === StockCategory.TABLAS
+    );
+
+    await expect(
+      service.correctPurchaseInvoiceLine({
+        invoiceId: invoice?.id ?? 0,
+        lineId: invoice?.lines[0].id ?? "",
+        category: StockCategory.TELAS,
+        tier: Tier.T5,
+        quantity: 100,
+        total: 20000
+      })
+    ).rejects.toThrow("stock negativo");
+  });
+});
+
 describe("clearStock", () => {
   it("sets all stock quantities, totals, and average costs to zero", async () => {
     await service.createPurchase({ category: StockCategory.TABLAS, tier: Tier.T5, quantity: 10, total: 1000 });
@@ -978,6 +1082,83 @@ describe("tickets", () => {
     expect(appliedCredits).toHaveLength(2);
     expect(thirdClose.ok).toBe(true);
     expect(thirdClose.ticket?.appliedLeftoverDiscount).toBe(2000);
+  });
+
+  it("updates pending leftover credits from overrides before applying them to a new ticket", async () => {
+    await seedRecipeStock(Tier.T5, 220, 1000);
+
+    const firstTicket = await createRecipe1Ticket(Tier.T5);
+    await service.closeTicket(closeInput(firstTicket.id, { leftoverTablesQuantity: 12, leftoverClothsQuantity: 7 }));
+    const pendingCredits = await service.listPendingLeftoverCredits(Tier.T5);
+
+    const secondTicket = await service.createTicket({
+      tier: Tier.T5,
+      tax: 100,
+      recipeId: "RECETA_1",
+      leftoverCreditOverrides: pendingCredits.map((credit) => ({
+        id: credit.id,
+        category: credit.category === StockCategory.TABLAS ? StockCategory.TELAS : StockCategory.TABLAS,
+        quantity: credit.category === StockCategory.TABLAS ? 5 : 3,
+        value: credit.category === StockCategory.TABLAS ? 5000 : 3000
+      }))
+    });
+    const persistedCredits = await prisma.ticketLeftoverCredit.findMany({
+      where: { appliedToTicketId: secondTicket.id },
+      orderBy: { value: "asc" }
+    });
+
+    expect(secondTicket.appliedLeftoverDiscount).toBe(8000);
+    expect(secondTicket.appliedLeftoverCredits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ category: StockCategory.TELAS, quantity: 5, value: 5000 }),
+        expect.objectContaining({ category: StockCategory.TABLAS, quantity: 3, value: 3000 })
+      ])
+    );
+    expect(persistedCredits).toEqual([
+      expect.objectContaining({ category: StockCategory.TABLAS, quantity: 3, value: 3000 }),
+      expect.objectContaining({ category: StockCategory.TELAS, quantity: 5, value: 5000 })
+    ]);
+  });
+
+  it("rejects invalid leftover credit overrides without applying credits", async () => {
+    await seedRecipeStock(Tier.T5, 220, 1000);
+
+    const firstTicket = await createRecipe1Ticket(Tier.T5);
+    await service.closeTicket(closeInput(firstTicket.id, { leftoverTablesQuantity: 12, leftoverClothsQuantity: 7 }));
+    const pendingCredits = await service.listPendingLeftoverCredits(Tier.T5);
+
+    await expect(
+      service.createTicket({
+        tier: Tier.T6,
+        tax: 100,
+        recipeId: "RECETA_1",
+        leftoverCreditOverrides: [
+          {
+            id: pendingCredits[0].id,
+            category: StockCategory.TABLAS,
+            quantity: 5,
+            value: 5000
+          }
+        ]
+      })
+    ).rejects.toThrow("pendiente");
+    await expect(
+      service.createTicket({
+        tier: Tier.T5,
+        tax: 100,
+        recipeId: "RECETA_1",
+        leftoverCreditOverrides: [
+          {
+            id: pendingCredits[0].id,
+            category: StockCategory.TABLAS,
+            quantity: 0,
+            value: 5000
+          }
+        ]
+      })
+    ).rejects.toThrow("mayor a cero");
+
+    expect(await service.listPendingLeftoverCredits(Tier.T5)).toHaveLength(2);
   });
 
   it("applies manual leftover discount from current stock without changing stock until close", async () => {

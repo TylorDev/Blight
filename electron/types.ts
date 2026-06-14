@@ -158,6 +158,15 @@ export interface CreateBulkPurchaseInput {
   purchases: BulkPurchaseItemInput[];
 }
 
+export interface CorrectPurchaseInvoiceLineInput {
+  invoiceId: number;
+  lineId: string;
+  category: Category;
+  tier: AppTier;
+  quantity: number;
+  total: number;
+}
+
 export interface CreateTicketInput {
   tier: AppTier;
   tax: number;
@@ -165,6 +174,7 @@ export interface CreateTicketInput {
   idPrefix?: "XL";
   leftoverTablesQuantity?: number;
   leftoverClothsQuantity?: number;
+  leftoverCreditOverrides?: Array<{ id: string; category: Extract<Category, "TABLAS" | "TELAS">; quantity: number; value: number }>;
 }
 
 export interface CloseTicketInput {
@@ -252,6 +262,7 @@ export interface AppApi {
   clearStock: () => Promise<StockItemView[]>;
   createPurchase: (input: CreatePurchaseInput) => Promise<StockItemView>;
   createBulkPurchase: (input: CreateBulkPurchaseInput) => Promise<StockItemView[]>;
+  correctPurchaseInvoiceLine: (input: CorrectPurchaseInvoiceLineInput) => Promise<PurchaseInvoiceView>;
   listPurchaseInvoices: () => Promise<PurchaseInvoiceView[]>;
   createTicket: (input: CreateTicketInput) => Promise<FabricationTicketView>;
   deleteOpenTicket: (ticketId: string) => Promise<void>;

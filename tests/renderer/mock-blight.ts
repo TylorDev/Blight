@@ -23,6 +23,7 @@ export function installBlightMock() {
     clearStock: vi.fn(),
     createPurchase: vi.fn(),
     createBulkPurchase: vi.fn(),
+    correctPurchaseInvoiceLine: vi.fn(),
     listPurchaseInvoices: vi.fn(),
     createTicket: vi.fn(),
     deleteOpenTicket: vi.fn(),

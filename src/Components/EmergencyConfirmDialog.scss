@@ -1,0 +1,46 @@
+.emergency-confirm__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.emergency-confirm {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 100;
+  display: grid;
+  width: min(430px, calc(100vw - 32px));
+  gap: 16px;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 20px;
+  background: #111113;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  transform: translate(-50%, -50%);
+}
+
+.emergency-confirm__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  svg {
+    width: 20px;
+    height: 20px;
+    color: #f97316;
+  }
+}
+
+.emergency-confirm__description {
+  margin: 0;
+  color: #d4d4d8;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.emergency-confirm__form {
+  display: grid;
+  gap: 16px;
+}

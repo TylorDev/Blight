@@ -196,9 +196,14 @@
   }
 }
 
+.invoice-product-wrap {
+  display: grid;
+  gap: 8px;
+}
+
 .invoice-product {
   display: grid;
-  grid-template-columns: 1.2fr 0.7fr 0.9fr 1.2fr;
+  grid-template-columns: 1.2fr 0.7fr 0.9fr 1.2fr auto;
   gap: 10px;
   align-items: center;
   min-height: 38px;
@@ -219,6 +224,66 @@
   }
 }
 
+.invoice-product__emergency {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #7f1d1d;
+  border-radius: 6px;
+  padding: 7px 9px;
+  background: #1f0f0f;
+  color: #fecaca;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+.invoice-correction {
+  display: grid;
+  grid-template-columns: 1.2fr 0.6fr 0.8fr 0.9fr auto;
+  gap: 10px;
+  align-items: end;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  padding: 10px;
+  background: #111113;
+
+  label {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+    color: #a1a1aa;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  select,
+  input {
+    min-width: 0;
+    border: 1px solid #3f3f46;
+    border-radius: 6px;
+    padding: 8px 9px;
+    background: #09090b;
+    color: #f4f4f5;
+    font-size: 13px;
+  }
+}
+
+.invoice-correction__error {
+  grid-column: 1 / -1;
+}
+
+.invoice-correction__actions {
+  display: flex;
+  gap: 8px;
+}
+
 @media (max-width: 1080px) {
   .buy-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -232,5 +297,13 @@
     small {
       text-align: left;
     }
+  }
+
+  .invoice-correction {
+    grid-template-columns: 1fr;
+  }
+
+  .invoice-correction__actions {
+    justify-content: flex-end;
   }
 }

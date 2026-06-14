@@ -106,6 +106,52 @@ describe("stock-store", () => {
     expect(blight.listStock).not.toHaveBeenCalled();
   });
 
+  it("corrects a purchase invoice line and refreshes stock and invoices", async () => {
+    const nextStock = [createStockItem({ category: "TELAS" as Category, quantity: 2, total: 200 })];
+    blight.correctPurchaseInvoiceLine.mockResolvedValue(undefined);
+    blight.listStock.mockResolvedValue(nextStock);
+
+    await useStockStore.getState().correctPurchaseInvoiceLine({
+      invoiceId: 1,
+      lineId: "movement-1",
+      category: "TELAS" as Category,
+      tier: "T5" as AppTier,
+      quantity: 2,
+      total: 200
+    });
+
+    expect(blight.correctPurchaseInvoiceLine).toHaveBeenCalledWith({
+      invoiceId: 1,
+      lineId: "movement-1",
+      category: "TELAS",
+      tier: "T5",
+      quantity: 2,
+      total: 200
+    });
+    expect(blight.listStock).toHaveBeenCalledTimes(1);
+    expect(blight.listPurchaseInvoices).toHaveBeenCalledTimes(1);
+    expect(useStockStore.getState().stock).toEqual(nextStock);
+  });
+
+  it("stores and rethrows purchase correction errors without refreshing stock", async () => {
+    const failure = new Error("correction failed");
+    blight.correctPurchaseInvoiceLine.mockRejectedValue(failure);
+
+    await expect(
+      useStockStore.getState().correctPurchaseInvoiceLine({
+        invoiceId: 1,
+        lineId: "movement-1",
+        category: "TELAS" as Category,
+        tier: "T5" as AppTier,
+        quantity: 2,
+        total: 200
+      })
+    ).rejects.toThrow("correction failed");
+
+    expect(useStockStore.getState().error).toBe("correction failed");
+    expect(blight.listStock).not.toHaveBeenCalled();
+  });
+
   it("clears stock with the API response", async () => {
     const clearedStock = [createStockItem({ quantity: 0, total: 0, averageCost: 0 })];
     blight.clearStock.mockResolvedValue(clearedStock);

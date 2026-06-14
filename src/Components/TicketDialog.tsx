@@ -1,8 +1,9 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { BadgeDollarSign, Factory, Gauge, Loader2, Plus, Sparkles, WandSparkles, X } from "lucide-react";
+import { BadgeDollarSign, Factory, Gauge, Loader2, Plus, ShieldAlert, Sparkles, WandSparkles, X } from "lucide-react";
 import { CSSProperties, FormEvent, useEffect, useMemo, useState } from "react";
 import type {
   AppTier,
+  Category,
   CreateTicketInput,
   FabricationTicketView,
   LeftoverCreditView,
@@ -26,6 +27,7 @@ import { useHistoryStore } from "../stores/history-store";
 import { useStockStore } from "../stores/stock-store";
 import { useTicketStore } from "../stores/ticket-store";
 import { Recipe } from "./Recipe";
+import { EmergencyConfirmDialog } from "./EmergencyConfirmDialog";
 import { TicketPreview } from "./TicketPreview";
 import "./TicketDialog.scss";
 
@@ -50,6 +52,12 @@ type TicketDialogFormProps = TicketDialogProps & {
   active: boolean;
   onCancel: () => void;
   stepLabel?: string;
+};
+
+type LeftoverCreditDraft = {
+  category: Extract<Category, "TABLAS" | "TELAS">;
+  quantity: string;
+  value: string;
 };
 
 export function TicketDialog({ triggerLabel = "Ticket", ...formProps }: TicketDialogProps) {
@@ -101,6 +109,8 @@ export function TicketDialogForm({
   const [recipeId, setRecipeId] = useState<RecipeId>(defaultRecipeId);
   const [tax, setTax] = useState("");
   const [pendingLeftovers, setPendingLeftovers] = useState<LeftoverCreditView[]>([]);
+  const [leftoverCreditDrafts, setLeftoverCreditDrafts] = useState<Record<string, LeftoverCreditDraft>>({});
+  const [leftoverCreditEmergencyUnlocked, setLeftoverCreditEmergencyUnlocked] = useState(false);
   const [manualLeftoverEnabled, setManualLeftoverEnabled] = useState(false);
   const [manualLeftoverTablesQuantity, setManualLeftoverTablesQuantity] = useState("");
   const [manualLeftoverClothsQuantity, setManualLeftoverClothsQuantity] = useState("");
@@ -125,11 +135,29 @@ export function TicketDialogForm({
         : {},
     [manualLeftoverClothsQuantity, manualLeftoverEnabled, manualLeftoverTablesQuantity]
   );
-  const preview = useMemo(
-    () => calculateTicketPreview(stock, selectedTier, effectiveTax, selectedRecipeId, pendingLeftovers, manualLeftovers),
-    [effectiveTax, manualLeftovers, pendingLeftovers, selectedRecipeId, selectedTier, stock]
+  const effectivePendingLeftovers = useMemo(
+    () =>
+      pendingLeftovers.map((credit) => {
+        const draft = leftoverCreditDrafts[credit.id];
+        if (!leftoverCreditEmergencyUnlocked || !draft) {
+          return credit;
+        }
+
+        return {
+          ...credit,
+          category: draft.category,
+          quantity: parseThousands(draft.quantity),
+          value: parseThousands(draft.value)
+        };
+      }),
+    [leftoverCreditDrafts, leftoverCreditEmergencyUnlocked, pendingLeftovers]
   );
-  const pendingLeftoverTotal = pendingLeftovers.reduce((total, credit) => total + credit.value, 0);
+  const preview = useMemo(
+    () =>
+      calculateTicketPreview(stock, selectedTier, effectiveTax, selectedRecipeId, effectivePendingLeftovers, manualLeftovers),
+    [effectivePendingLeftovers, effectiveTax, manualLeftovers, selectedRecipeId, selectedTier, stock]
+  );
+  const pendingLeftoverTotal = effectivePendingLeftovers.reduce((total, credit) => total + credit.value, 0);
   const manualLeftoverTotal = useMemo(
     () =>
       manualLeftoverEnabled
@@ -151,7 +179,11 @@ export function TicketDialogForm({
     setError(null);
     setLoadingLeftovers(true);
     listPendingLeftoverCredits(selectedTier)
-      .then(setPendingLeftovers)
+      .then((credits) => {
+        setPendingLeftovers(credits);
+        setLeftoverCreditDrafts(createLeftoverCreditDrafts(credits));
+        setLeftoverCreditEmergencyUnlocked(false);
+      })
       .catch((currentError) =>
         setError(currentError instanceof Error ? currentError.message : "No se pudieron cargar las sobras.")
       )
@@ -172,7 +204,18 @@ export function TicketDialogForm({
     setManualLeftoverEnabled(false);
     setManualLeftoverTablesQuantity("");
     setManualLeftoverClothsQuantity("");
+    setLeftoverCreditEmergencyUnlocked(false);
   }, [selectedRecipeId, selectedTier]);
+
+  const updateLeftoverCreditDraft = (creditId: string, patch: Partial<LeftoverCreditDraft>) => {
+    setLeftoverCreditDrafts((current) => ({
+      ...current,
+      [creditId]: {
+        ...current[creditId],
+        ...patch
+      }
+    }));
+  };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -189,6 +232,19 @@ export function TicketDialogForm({
               leftoverTablesQuantity: manualLeftovers.TABLAS ?? 0,
               leftoverClothsQuantity: manualLeftovers.TELAS ?? 0
             }
+          : {}),
+        ...(leftoverCreditEmergencyUnlocked
+          ? {
+              leftoverCreditOverrides: pendingLeftovers.map((credit) => {
+                const draft = leftoverCreditDrafts[credit.id];
+                return {
+                  id: credit.id,
+                  category: draft.category,
+                  quantity: parseThousands(draft.quantity),
+                  value: parseThousands(draft.value)
+                };
+              })
+            }
           : {})
       });
       if (!taxLocked) {
@@ -197,6 +253,7 @@ export function TicketDialogForm({
       setManualLeftoverEnabled(false);
       setManualLeftoverTablesQuantity("");
       setManualLeftoverClothsQuantity("");
+      setLeftoverCreditEmergencyUnlocked(false);
       await onCreated?.(ticket);
     } catch (currentError) {
       setError(currentError instanceof Error ? currentError.message : "No se pudo guardar.");
@@ -347,15 +404,71 @@ export function TicketDialogForm({
             <Sparkles />
             <strong>Sobras aplicadas al crear</strong>
             <span>Descuento total {formatCurrency(pendingLeftoverTotal)}</span>
+            <EmergencyConfirmDialog
+              title="Editar sobras pendientes"
+              description="Esta accion cambia los creditos de sobras que se aplicaran al ticket. Escribe CONFIRMAR para desbloquear la edicion."
+              onConfirm={() => setLeftoverCreditEmergencyUnlocked(true)}
+            >
+              <button className="leftover-note__emergency" type="button">
+                <ShieldAlert />
+                Emergencia
+              </button>
+            </EmergencyConfirmDialog>
           </div>
           <div className="leftover-note__rows">
-            {pendingLeftovers.map((credit) => (
-              <div className="leftover-note__row" key={credit.id}>
-                <span>{categoryLabels[credit.category]}</span>
-                <strong>{credit.quantity}</strong>
-                <b>{formatCurrency(credit.value)}</b>
-              </div>
-            ))}
+            {effectivePendingLeftovers.map((credit) => {
+              const draft = leftoverCreditDrafts[credit.id];
+
+              return (
+                <div className="leftover-note__row" key={credit.id}>
+                  {leftoverCreditEmergencyUnlocked && draft ? (
+                    <>
+                      <select
+                        value={draft.category}
+                        onChange={(event) =>
+                          updateLeftoverCreditDraft(credit.id, {
+                            category: event.target.value as Extract<Category, "TABLAS" | "TELAS">
+                          })
+                        }
+                      >
+                        <option value="TABLAS">{categoryLabels.TABLAS}</option>
+                        <option value="TELAS">{categoryLabels.TELAS}</option>
+                      </select>
+                      <input
+                        aria-label={`Cantidad de ${categoryLabels[credit.category]}`}
+                        value={draft.quantity}
+                        onChange={(event) =>
+                          updateLeftoverCreditDraft(credit.id, {
+                            quantity: normalizeThousandsInput(event.target.value)
+                          })
+                        }
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9.]*"
+                      />
+                      <input
+                        aria-label={`Valor de ${categoryLabels[credit.category]}`}
+                        value={draft.value}
+                        onChange={(event) =>
+                          updateLeftoverCreditDraft(credit.id, {
+                            value: normalizeThousandsInput(event.target.value)
+                          })
+                        }
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9.]*"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <span>{categoryLabels[credit.category]}</span>
+                      <strong>{formatNumber(credit.quantity)}</strong>
+                      <b>{formatCurrency(credit.value)}</b>
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       ) : null}
@@ -368,7 +481,7 @@ export function TicketDialogForm({
           className="ticket-dialog__recipe-summary"
           tier={selectedTier}
           recipeId={selectedRecipeId}
-          leftoverCredits={pendingLeftovers}
+          leftoverCredits={effectivePendingLeftovers}
           manualLeftovers={manualLeftovers}
         />
       </section>
@@ -389,4 +502,19 @@ export function TicketDialogForm({
 
 function getStockAverageCost(stock: StockItemView[], tier: AppTier, category: "TABLAS" | "TELAS") {
   return stock.find((item) => item.tier === tier && item.category === category)?.averageCost ?? 0;
+}
+
+function createLeftoverCreditDrafts(credits: LeftoverCreditView[]) {
+  return Object.fromEntries(
+    credits
+      .filter((credit) => credit.category === "TABLAS" || credit.category === "TELAS")
+      .map((credit) => [
+        credit.id,
+        {
+          category: credit.category as Extract<Category, "TABLAS" | "TELAS">,
+          quantity: formatThousands(String(credit.quantity)),
+          value: formatThousands(String(Math.trunc(credit.value)))
+        }
+      ])
+  );
 }

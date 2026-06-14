@@ -4,6 +4,7 @@ import type {
   AppApi,
   AppTier,
   CloseTicketInput,
+  CorrectPurchaseInvoiceLineInput,
   CreateBulkPurchaseInput,
   CreatePurchaseInput,
   CreateTicketInput,
@@ -16,6 +17,8 @@ const api: AppApi = {
   clearStock: () => ipcRenderer.invoke("stock:clear"),
   createPurchase: (input: CreatePurchaseInput) => ipcRenderer.invoke("purchase:create", input),
   createBulkPurchase: (input: CreateBulkPurchaseInput) => ipcRenderer.invoke("purchase:createBulk", input),
+  correctPurchaseInvoiceLine: (input: CorrectPurchaseInvoiceLineInput) =>
+    ipcRenderer.invoke("purchase:correctLine", input),
   listPurchaseInvoices: () => ipcRenderer.invoke("purchase:listInvoices"),
   createTicket: (input: CreateTicketInput) => ipcRenderer.invoke("ticket:create", input),
   deleteOpenTicket: (ticketId: string) => ipcRenderer.invoke("ticket:deleteOpen", ticketId),

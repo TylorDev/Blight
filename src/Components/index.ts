@@ -2,6 +2,7 @@ export { BulkPurchaseDialog } from "./BulkPurchaseDialog";
 export { ClearStockDialog } from "./ClearStockDialog";
 export { CloseTicketDialog } from "./CloseTicketDialog";
 export { EmptyState } from "./EmptyState";
+export { EmergencyConfirmDialog } from "./EmergencyConfirmDialog";
 export { Metric } from "./Metric";
 export { PurchaseDialog } from "./PurchaseDialog";
 export { Recipe } from "./Recipe";
