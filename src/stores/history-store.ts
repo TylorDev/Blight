@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { FabricationTicketView } from "../../electron/types";
+import type { FabricationTicketView, UpdateClosedTicketMaterialCostsInput } from "../../electron/types";
 
 interface HistoryStore {
   tickets: FabricationTicketView[];
@@ -8,6 +8,7 @@ interface HistoryStore {
   clearError: () => void;
   loadHistory: () => Promise<void>;
   clearHistory: () => Promise<void>;
+  updateClosedTicketMaterialCosts: (input: UpdateClosedTicketMaterialCostsInput) => Promise<FabricationTicketView>;
 }
 
 export const useHistoryStore = create<HistoryStore>((set) => ({
@@ -39,6 +40,19 @@ export const useHistoryStore = create<HistoryStore>((set) => ({
       throw currentError;
     } finally {
       set({ loading: false });
+    }
+  },
+  updateClosedTicketMaterialCosts: async (input) => {
+    set({ error: null });
+    try {
+      const ticket = await window.blight.updateClosedTicketMaterialCosts(input);
+      const tickets = await window.blight.listHistory();
+      set({ tickets });
+      return ticket;
+    } catch (currentError) {
+      const error = currentError instanceof Error ? currentError.message : "No se pudo corregir el coste del ticket.";
+      set({ error });
+      throw currentError;
     }
   }
 }));

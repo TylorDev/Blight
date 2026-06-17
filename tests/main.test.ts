@@ -10,6 +10,7 @@ const expectedChannels = [
   "purchase:correctLine",
   "purchase:listInvoices",
   "ticket:create",
+  "ticket:updateClosedMaterialCosts",
   "ticket:deleteOpen",
   "ticket:list",
   "ticket:listOpen",
@@ -209,6 +210,7 @@ function installMainMocks(options?: MainMockOptions) {
       correctPurchaseInvoiceLine: vi.fn(),
       listPurchaseInvoices: vi.fn(),
       createTicket: vi.fn(),
+      updateClosedTicketMaterialCosts: vi.fn(),
       deleteOpenTicket: vi.fn(),
       disconnectPrisma: vi.fn(),
       initializeDatabase: vi.fn(() => {

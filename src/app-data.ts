@@ -94,7 +94,7 @@ export const staffMovementTypeLabels: Record<StaffMovementTypeView, string> = {
   VENTA: "Venta"
 };
 
-export const recipeIds: RecipeId[] = ["RECETA_1", "RECETA_2"];
+export const recipeIds: RecipeId[] = ["RECETA_1", "RECETA_2", "RECETA_BONUS_10", "RECETA_PAYDAY"];
 export const defaultRecipeId: RecipeId = "RECETA_2";
 export const FOCUS_PER_STAFF = 1005;
 
@@ -137,6 +137,38 @@ export const ticketRecipes: Record<RecipeId, TicketRecipe> = {
       { category: "TABLAS", quantity: 83 },
       { category: "TELAS", quantity: 50 },
       { category: "ARTEFACTOS", quantity: 7 }
+    ]
+  },
+  RECETA_BONUS_10: {
+    id: "RECETA_BONUS_10",
+    label: "Bonus 10%",
+    staffQuantity: 7,
+    diaryByTier: {
+      T5: 22,
+      T6: 16,
+      T7: 10,
+      T8: 5
+    },
+    materials: [
+      { category: "TABLAS", quantity: 67 },
+      { category: "TELAS", quantity: 40 },
+      { category: "ARTEFACTOS", quantity: 7 }
+    ]
+  },
+  RECETA_PAYDAY: {
+    id: "RECETA_PAYDAY",
+    label: "Payday",
+    staffQuantity: 12,
+    diaryByTier: {
+      T5: 37,
+      T6: 28,
+      T7: 18,
+      T8: 9
+    },
+    materials: [
+      { category: "TABLAS", quantity: 129 },
+      { category: "TELAS", quantity: 77 },
+      { category: "ARTEFACTOS", quantity: 12 }
     ]
   }
 };
@@ -310,4 +342,9 @@ export function formatDate(value: string) {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(new Date(value));
+}
+
+export function formatAvailableAtFromClosedAt(value: string) {
+  const availableAt = new Date(new Date(value).getTime() + 72 * 60 * 60 * 1000);
+  return formatDate(availableAt.toISOString());
 }

@@ -1,18 +1,22 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { BookOpenCheck, Calculator, Package, WalletCards, X } from "lucide-react";
-import type { ReactNode } from "react";
+import { BookOpenCheck, Calculator, Check, Loader2, Package, ShieldAlert, WalletCards, X } from "lucide-react";
+import { FormEvent, ReactNode, useState } from "react";
 import type { Category, FabricationTicketView } from "../../electron/types";
 import {
   categoryLabels,
+  formatAvailableAtFromClosedAt,
   formatCurrency,
   formatDate,
   formatNumber,
   staffQualityLabels,
   staffQualityToneClasses
 } from "../app-data";
+import { formatThousands, normalizeThousandsInput, parseThousands } from "../number-format";
 import fabricIcon from "../Resources/fabric.svg";
 import staffMonoIcon from "../Resources/staff-monocolor.svg";
 import woodIcon from "../Resources/wood.svg";
+import { useHistoryStore } from "../stores/history-store";
+import { EmergencyConfirmDialog } from "./EmergencyConfirmDialog";
 import "./TicketDetailDialog.scss";
 
 type TicketDetailDialogProps = {
@@ -44,7 +48,13 @@ function ConsumptionIcon({ category }: { category: Category }) {
 }
 
 export function TicketDetailDialog({ children, ticket }: TicketDetailDialogProps) {
+  const [editingCosts, setEditingCosts] = useState(false);
+  const [costDrafts, setCostDrafts] = useState(() => createCostDrafts(ticket));
+  const [savingCosts, setSavingCosts] = useState(false);
+  const [costError, setCostError] = useState<string | null>(null);
+  const updateClosedTicketMaterialCosts = useHistoryStore((state) => state.updateClosedTicketMaterialCosts);
   const closedDate = ticket.closedAt ? formatDate(ticket.closedAt) : "";
+  const availableDate = ticket.closedAt ? formatAvailableAtFromClosedAt(ticket.closedAt) : "";
   const producedStaffs = ticket.producedStaffs.filter((staff) => staff.quantity > 0);
   const primaryMetrics = [
     {
@@ -84,6 +94,31 @@ export function TicketDetailDialog({ children, ticket }: TicketDetailDialogProps
     },
     { label: "Sobras aplicadas", value: formatCurrency(ticket.appliedLeftoverDiscount) }
   ];
+  const unlockCostEditing = () => {
+    setCostDrafts(createCostDrafts(ticket));
+    setCostError(null);
+    setEditingCosts(true);
+  };
+  const submitCostCorrection = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSavingCosts(true);
+    setCostError(null);
+
+    try {
+      await updateClosedTicketMaterialCosts({
+        ticketId: ticket.id,
+        materialCosts: ticket.consumptions.map((consumption) => ({
+          consumptionId: consumption.id,
+          total: parseThousands(costDrafts[consumption.id] ?? "")
+        }))
+      });
+      setEditingCosts(false);
+    } catch (currentError) {
+      setCostError(currentError instanceof Error ? currentError.message : "No se pudo corregir el coste del ticket.");
+    } finally {
+      setSavingCosts(false);
+    }
+  };
 
   return (
     <Dialog.Root>
@@ -98,6 +133,12 @@ export function TicketDetailDialog({ children, ticket }: TicketDetailDialogProps
           <Dialog.Description className="ticket-detail-dialog__description">
             Detalle completo del ticket cerrado, incluyendo costos y consumos.
           </Dialog.Description>
+          {availableDate ? (
+            <div className="ticket-detail-availability">
+              <span>Disponible</span>
+              <strong>{availableDate}</strong>
+            </div>
+          ) : null}
           <section className="ticket-detail-kpis" aria-label="Resumen principal">
             {primaryMetrics.map((metric) => (
               <div className="ticket-detail-kpi" key={metric.label}>
@@ -142,21 +183,71 @@ export function TicketDetailDialog({ children, ticket }: TicketDetailDialogProps
               <div className="ticket-detail-section__head">
                 <h3>Consumos</h3>
                 <span>{ticket.consumptions.length} materiales</span>
+                <EmergencyConfirmDialog
+                  title="Corregir costes del ticket"
+                  description="Esta accion cambia el coste historico del ticket cerrado. Escribe CONFIRMAR para editar los costes por material."
+                  onConfirm={unlockCostEditing}
+                >
+                  <button className="ticket-detail-emergency" type="button">
+                    <ShieldAlert />
+                    Emergencia
+                  </button>
+                </EmergencyConfirmDialog>
               </div>
-              <div className="consumption-list">
-                {ticket.consumptions.map((item) => (
-                  <div className={`consumption-item ${consumptionToneClasses[item.category]}`} key={item.id}>
-                    <span className="consumption-item__icon">
-                      <ConsumptionIcon category={item.category} />
-                    </span>
-                    <span className="consumption-item__meta">
-                      <b>{categoryLabels[item.category]}</b>
-                      <small>Cantidad {formatNumber(item.quantity)}</small>
-                    </span>
-                    <strong className="consumption-item__value">{formatCurrency(item.discountedTotal)}</strong>
+              {editingCosts ? (
+                <form className="ticket-cost-correction" onSubmit={submitCostCorrection}>
+                  {ticket.consumptions.map((item) => (
+                    <label className={`ticket-cost-correction__row ${consumptionToneClasses[item.category]}`} key={item.id}>
+                      <span className="consumption-item__icon">
+                        <ConsumptionIcon category={item.category} />
+                      </span>
+                      <span className="consumption-item__meta">
+                        <b>{categoryLabels[item.category]}</b>
+                        <small>
+                          Cantidad {formatNumber(item.quantity)} · Actual {formatCurrency(item.discountedTotal)}
+                        </small>
+                      </span>
+                      <input
+                        value={costDrafts[item.id] ?? ""}
+                        onChange={(event) =>
+                          setCostDrafts((current) => ({
+                            ...current,
+                            [item.id]: normalizeThousandsInput(event.target.value)
+                          }))
+                        }
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9.]*"
+                      />
+                    </label>
+                  ))}
+                  {costError ? <p className="ticket-detail-dialog__error">{costError}</p> : null}
+                  <div className="ticket-cost-correction__actions">
+                    <button className="button ghost" type="button" onClick={() => setEditingCosts(false)}>
+                      Cancelar
+                    </button>
+                    <button className="button primary" type="submit" disabled={savingCosts}>
+                      {savingCosts ? <Loader2 className="spin" /> : <Check />}
+                      Guardar costes
+                    </button>
                   </div>
-                ))}
-              </div>
+                </form>
+              ) : (
+                <div className="consumption-list">
+                  {ticket.consumptions.map((item) => (
+                    <div className={`consumption-item ${consumptionToneClasses[item.category]}`} key={item.id}>
+                      <span className="consumption-item__icon">
+                        <ConsumptionIcon category={item.category} />
+                      </span>
+                      <span className="consumption-item__meta">
+                        <b>{categoryLabels[item.category]}</b>
+                        <small>Cantidad {formatNumber(item.quantity)}</small>
+                      </span>
+                      <strong className="consumption-item__value">{formatCurrency(item.discountedTotal)}</strong>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
           </div>
           <Dialog.Close asChild>
@@ -167,5 +258,11 @@ export function TicketDetailDialog({ children, ticket }: TicketDetailDialogProps
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+function createCostDrafts(ticket: FabricationTicketView) {
+  return Object.fromEntries(
+    ticket.consumptions.map((consumption) => [consumption.id, formatThousands(String(Math.trunc(consumption.discountedTotal)))])
   );
 }

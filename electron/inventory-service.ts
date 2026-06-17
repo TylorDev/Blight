@@ -28,8 +28,10 @@ import type {
   StaffStockMovementView,
   StockItemView,
   TicketAnalizerHistoryInput,
-  TicketAnalizerHistoryView
+  TicketAnalizerHistoryView,
+  UpdateClosedTicketMaterialCostsInput
 } from "./types";
+import { analyzeTickets, getTicketAnalizerValuesFromManualState } from "../src/Pages/TicketAnalizer/ticket-analizer";
 
 const categories = [
   StockCategory.TABLAS,
@@ -89,6 +91,34 @@ const recipes: Record<
       [Tier.T6]: 16,
       [Tier.T7]: 10,
       [Tier.T8]: 5
+    }
+  },
+  RECETA_BONUS_10: {
+    staffQuantity: 7,
+    materials: [
+      { category: StockCategory.TABLAS, quantity: 67 },
+      { category: StockCategory.TELAS, quantity: 40 },
+      { category: StockCategory.ARTEFACTOS, quantity: 7 }
+    ],
+    diaryByTier: {
+      [Tier.T5]: 22,
+      [Tier.T6]: 16,
+      [Tier.T7]: 10,
+      [Tier.T8]: 5
+    }
+  },
+  RECETA_PAYDAY: {
+    staffQuantity: 12,
+    materials: [
+      { category: StockCategory.TABLAS, quantity: 129 },
+      { category: StockCategory.TELAS, quantity: 77 },
+      { category: StockCategory.ARTEFACTOS, quantity: 12 }
+    ],
+    diaryByTier: {
+      [Tier.T5]: 37,
+      [Tier.T6]: 28,
+      [Tier.T7]: 18,
+      [Tier.T8]: 9
     }
   }
 };
@@ -1062,6 +1092,91 @@ export function createInventoryService(prisma: PrismaClient) {
     return result;
   }
 
+  async function updateClosedTicketMaterialCosts(
+    input: UpdateClosedTicketMaterialCostsInput
+  ): Promise<FabricationTicketView> {
+    validateUpdateClosedTicketMaterialCostsInput(input);
+
+    const updatedTicket = await prisma.$transaction(async (tx) => {
+      const ticket = await tx.fabricationTicket.findUnique({
+        where: { id: input.ticketId },
+        include: { consumptions: true, appliedLeftoverCredits: true, producedStaffs: true }
+      });
+
+      if (!ticket) {
+        throw new Error("Ticket no encontrado.");
+      }
+
+      if (ticket.status !== TicketStatus.CERRADO) {
+        throw new Error("Solo se puede corregir un ticket cerrado.");
+      }
+
+      const materialCostById = new Map(input.materialCosts.map((materialCost) => [materialCost.consumptionId, materialCost.total]));
+      const unknownConsumptionIds = input.materialCosts
+        .map((materialCost) => materialCost.consumptionId)
+        .filter((consumptionId) => !ticket.consumptions.some((consumption) => consumption.id === consumptionId));
+      if (unknownConsumptionIds.length > 0) {
+        throw new Error("Hay consumos que no pertenecen al ticket.");
+      }
+
+      for (const consumption of ticket.consumptions) {
+        const nextTotal = materialCostById.get(consumption.id);
+        if (nextTotal === undefined) {
+          continue;
+        }
+
+        await tx.ticketConsumption.update({
+          where: { id: consumption.id },
+          data: {
+            discountedTotal: nextTotal,
+            averageCostUsed: consumption.quantity > 0 ? nextTotal / consumption.quantity : 0
+          }
+        });
+
+        await tx.stockMovement.updateMany({
+          where: {
+            type: "CONSUMO",
+            ticketId: ticket.id,
+            category: consumption.category,
+            tier: consumption.tier
+          },
+          data: { total: nextTotal }
+        });
+      }
+
+      const consumptions = await tx.ticketConsumption.findMany({
+        where: { ticketId: ticket.id }
+      });
+      const materialTotal = consumptions.reduce((total, consumption) => total + consumption.discountedTotal, 0);
+      const investmentTotal = materialTotal + ticket.craftingTax - ticket.filledDiariesDiscount;
+      if (investmentTotal < 0) {
+        throw new Error("La correccion no puede dejar la inversion total por debajo de cero.");
+      }
+
+      const unitCost = ticket.staffQuantity > 0 ? investmentTotal / ticket.staffQuantity : 0;
+      await tx.staffStockLot.updateMany({
+        where: { ticketId: ticket.id },
+        data: { unitCost }
+      });
+
+      const updated = await tx.fabricationTicket.update({
+        where: { id: ticket.id },
+        data: {
+          materialTotal,
+          investmentTotal,
+          unitCost
+        },
+        include: { consumptions: true, appliedLeftoverCredits: true, producedStaffs: true }
+      });
+
+      await recalculateTicketAnalizerHistoryForTicket(tx, ticket.id);
+
+      return updated;
+    });
+
+    return toTicketView(updatedTicket);
+  }
+
   async function saveTicketAnalizerHistory(input: TicketAnalizerHistoryInput): Promise<TicketAnalizerHistoryView> {
     validateTicketAnalizerHistoryInput(input);
 
@@ -1183,6 +1298,51 @@ export function createInventoryService(prisma: PrismaClient) {
     return rows[0] ? toTicketAnalizerHistoryView(rows[0]) : null;
   }
 
+  async function recalculateTicketAnalizerHistoryForTicket(tx: Prisma.TransactionClient, ticketId: string) {
+    const rows = await tx.$queryRaw<Array<TicketAnalizerHistoryRow>>`
+      SELECT "id", "ticketIdsJson", "manualStateJson", "summaryJson", "isEdited", "isAccountingValid", "sourceSnapshotId", "invalidationReason", "mutationType", "createdAt"
+      FROM "TicketAnalizerHistory"
+    `;
+    const affectedRows = rows.filter((row) => {
+      try {
+        const ticketIds = JSON.parse(row.ticketIdsJson) as string[];
+        return ticketIds.includes(ticketId);
+      } catch {
+        return false;
+      }
+    });
+
+    for (const row of affectedRows) {
+      const ticketIds = normalizeTicketAnalizerHistoryTicketIds(JSON.parse(row.ticketIdsJson) as string[]);
+      const tickets = await tx.fabricationTicket.findMany({
+        where: { id: { in: ticketIds } },
+        include: { consumptions: true, appliedLeftoverCredits: true, producedStaffs: true }
+      });
+      const manualState = JSON.parse(row.manualStateJson) as TicketAnalizerHistoryView["manualState"];
+      const values = getTicketAnalizerValuesFromManualState(manualState);
+      const analysis = analyzeTickets(
+        tickets.map(toTicketView),
+        ticketIds,
+        values.saleValueByPower,
+        values.saleValueExceptions,
+        values.editOverrides,
+        values.taxPercentages
+      );
+
+      if (analysis.errors.length > 0) {
+        continue;
+      }
+
+      await tx.$executeRaw`
+        UPDATE "TicketAnalizerHistory"
+        SET
+          "summaryJson" = ${JSON.stringify(analysis.financialSummary)},
+          "createdAt" = ${new Date()}
+        WHERE "id" = ${row.id}
+      `;
+    }
+  }
+
   async function disconnectPrisma() {
     await prisma.$disconnect();
   }
@@ -1209,6 +1369,7 @@ export function createInventoryService(prisma: PrismaClient) {
     deleteOpenTicket,
     listPendingLeftoverCredits,
     closeTicket,
+    updateClosedTicketMaterialCosts,
     saveTicketAnalizerHistory,
     listTicketAnalizerHistory,
     getTicketAnalizerHistory,
@@ -1245,6 +1406,8 @@ export const clearHistory = () => getDefaultService().clearHistory();
 export const deleteOpenTicket = (ticketId: string) => getDefaultService().deleteOpenTicket(ticketId);
 export const listPendingLeftoverCredits = (tier: Tier) => getDefaultService().listPendingLeftoverCredits(tier);
 export const closeTicket = (input: CloseTicketInput) => getDefaultService().closeTicket(input);
+export const updateClosedTicketMaterialCosts = (input: UpdateClosedTicketMaterialCostsInput) =>
+  getDefaultService().updateClosedTicketMaterialCosts(input);
 export const saveTicketAnalizerHistory = (input: TicketAnalizerHistoryInput) =>
   getDefaultService().saveTicketAnalizerHistory(input);
 export const listTicketAnalizerHistory = () => getDefaultService().listTicketAnalizerHistory();
@@ -1693,7 +1856,12 @@ function calculateFocusCost(staffQuantity: number) {
 }
 
 function normalizeRecipeId(recipeId: string | null | undefined): RecipeId {
-  if (recipeId === "RECETA_1" || recipeId === "RECETA_2") {
+  if (
+    recipeId === "RECETA_1" ||
+    recipeId === "RECETA_2" ||
+    recipeId === "RECETA_BONUS_10" ||
+    recipeId === "RECETA_PAYDAY"
+  ) {
     return recipeId;
   }
 
@@ -1701,7 +1869,12 @@ function normalizeRecipeId(recipeId: string | null | undefined): RecipeId {
 }
 
 function getTicketRecipeId(ticket: { recipeId?: string | null; staffQuantity: number }): RecipeId {
-  if (ticket.recipeId === "RECETA_1" || ticket.recipeId === "RECETA_2") {
+  if (
+    ticket.recipeId === "RECETA_1" ||
+    ticket.recipeId === "RECETA_2" ||
+    ticket.recipeId === "RECETA_BONUS_10" ||
+    ticket.recipeId === "RECETA_PAYDAY"
+  ) {
     return ticket.recipeId;
   }
 
@@ -1721,6 +1894,32 @@ function validateCloseTicketInput(input: CloseTicketInput) {
 
   if (input.leftoverTablesQuantity < 1 || input.leftoverClothsQuantity < 1) {
     throw new Error("Cantidad de Tablas Sobrantes y Cantidad de Telas Sobrantes deben ser mayores a cero.");
+  }
+}
+
+function validateUpdateClosedTicketMaterialCostsInput(input: UpdateClosedTicketMaterialCostsInput) {
+  if (!input.ticketId || input.ticketId.trim() === "") {
+    throw new Error("Ticket invalido.");
+  }
+
+  if (!Array.isArray(input.materialCosts) || input.materialCosts.length === 0) {
+    throw new Error("Debes indicar al menos un coste de material.");
+  }
+
+  const seenConsumptionIds = new Set<string>();
+  for (const materialCost of input.materialCosts) {
+    if (!materialCost.consumptionId || materialCost.consumptionId.trim() === "") {
+      throw new Error("Consumo invalido.");
+    }
+
+    if (seenConsumptionIds.has(materialCost.consumptionId)) {
+      throw new Error("Hay consumos duplicados.");
+    }
+    seenConsumptionIds.add(materialCost.consumptionId);
+
+    if (!Number.isFinite(materialCost.total) || materialCost.total < 0) {
+      throw new Error("Los costes de materiales deben ser mayores o iguales a cero.");
+    }
   }
 }
 

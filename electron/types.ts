@@ -14,7 +14,7 @@ export type StaffQualityView = StaffQuality;
 export type StaffMovementTypeView = StaffMovementType;
 export type PurchaseInvoiceTypeView = PurchaseInvoiceType;
 export type PurchaseVendorView = PurchaseVendor;
-export type RecipeId = "RECETA_1" | "RECETA_2";
+export type RecipeId = "RECETA_1" | "RECETA_2" | "RECETA_BONUS_10" | "RECETA_PAYDAY";
 
 export interface StockItemView {
   id: string;
@@ -167,6 +167,11 @@ export interface CorrectPurchaseInvoiceLineInput {
   total: number;
 }
 
+export interface UpdateClosedTicketMaterialCostsInput {
+  ticketId: string;
+  materialCosts: Array<{ consumptionId: string; total: number }>;
+}
+
 export interface CreateTicketInput {
   tier: AppTier;
   tax: number;
@@ -265,6 +270,7 @@ export interface AppApi {
   correctPurchaseInvoiceLine: (input: CorrectPurchaseInvoiceLineInput) => Promise<PurchaseInvoiceView>;
   listPurchaseInvoices: () => Promise<PurchaseInvoiceView[]>;
   createTicket: (input: CreateTicketInput) => Promise<FabricationTicketView>;
+  updateClosedTicketMaterialCosts: (input: UpdateClosedTicketMaterialCostsInput) => Promise<FabricationTicketView>;
   deleteOpenTicket: (ticketId: string) => Promise<void>;
   listTickets: () => Promise<FabricationTicketView[]>;
   listOpenTickets: () => Promise<FabricationTicketView[]>;

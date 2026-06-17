@@ -46,7 +46,7 @@
 
 .history-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 
   span {
@@ -62,6 +62,15 @@
     font-weight: 600;
     text-transform: uppercase;
   }
+}
+
+.history-summary__availability {
+  border: 1px solid color-mix(in srgb, #d6b446 36%, #27272a);
+  border-radius: 6px;
+  padding: 8px 9px;
+  background:
+    linear-gradient(90deg, rgba(214, 180, 70, 0.14), transparent),
+    #09090b;
 }
 
 @media (max-width: 760px) {

@@ -589,6 +589,24 @@ describe("tickets", () => {
     expect(ticket.craftingTax).toBeCloseTo(7056, 4);
   });
 
+  it("creates bonus 10 percent recipe tickets with 7 staff and focus", async () => {
+    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100, recipeId: "RECETA_BONUS_10" });
+
+    expect(ticket.recipeId).toBe("RECETA_BONUS_10");
+    expect(ticket.staffQuantity).toBe(7);
+    expect(ticket.focusCost).toBe(7035);
+    expect(ticket.craftingTax).toBeCloseTo(7056, 4);
+  });
+
+  it("creates payday recipe tickets with 12 staff and focus", async () => {
+    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100, recipeId: "RECETA_PAYDAY" });
+
+    expect(ticket.recipeId).toBe("RECETA_PAYDAY");
+    expect(ticket.staffQuantity).toBe(12);
+    expect(ticket.focusCost).toBe(12060);
+    expect(ticket.craftingTax).toBeCloseTo(12096, 4);
+  });
+
   it("creates XL tickets with sequential prefixed ids", async () => {
     const first = await service.createTicket({ tier: Tier.T5, tax: 100, idPrefix: "XL" });
     const second = await service.createTicket({ tier: Tier.T6, tax: 100, idPrefix: "XL" });
@@ -671,6 +689,68 @@ describe("tickets", () => {
     expect(result.ticket?.producedStaffs).toEqual([
       expect.objectContaining({ quality: StaffQuality.NORMAL, quantity: 7 })
     ]);
+  });
+
+  it("closes a bonus 10 percent recipe ticket with reduced materials and recipe diaries", async () => {
+    await seedRecipeStock(Tier.T5, 100, 1000);
+
+    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100, recipeId: "RECETA_BONUS_10" });
+    const result = await service.closeTicket(
+      closeInput(ticket.id, {
+        producedStaffs: [{ quality: StaffQuality.NORMAL, quantity: 7 }]
+      })
+    );
+    const stock = await service.listStock();
+
+    expect(result.ok).toBe(true);
+    expect(result.ticket).toMatchObject({
+      recipeId: "RECETA_BONUS_10",
+      staffQuantity: 7,
+      focusCost: 7035
+    });
+    expect(result.ticket?.consumptions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ category: StockCategory.TABLAS, quantity: 67 }),
+        expect.objectContaining({ category: StockCategory.TELAS, quantity: 40 }),
+        expect.objectContaining({ category: StockCategory.ARTEFACTOS, quantity: 7 }),
+        expect.objectContaining({ category: StockCategory.DIARIOS_VACIOS, quantity: 22 })
+      ])
+    );
+    expect(stockItem(stock, StockCategory.TABLAS, Tier.T5)).toMatchObject({ quantity: 33 });
+    expect(stockItem(stock, StockCategory.TELAS, Tier.T5)).toMatchObject({ quantity: 60 });
+    expect(stockItem(stock, StockCategory.ARTEFACTOS, Tier.T5)).toMatchObject({ quantity: 93 });
+    expect(stockItem(stock, StockCategory.DIARIOS_VACIOS, Tier.T5)).toMatchObject({ quantity: 78 });
+  });
+
+  it("closes a payday recipe ticket with payday materials and recipe diaries", async () => {
+    await seedRecipeStock(Tier.T5, 140, 1000);
+
+    const ticket = await service.createTicket({ tier: Tier.T5, tax: 100, recipeId: "RECETA_PAYDAY" });
+    const result = await service.closeTicket(
+      closeInput(ticket.id, {
+        producedStaffs: [{ quality: StaffQuality.NORMAL, quantity: 12 }]
+      })
+    );
+    const stock = await service.listStock();
+
+    expect(result.ok).toBe(true);
+    expect(result.ticket).toMatchObject({
+      recipeId: "RECETA_PAYDAY",
+      staffQuantity: 12,
+      focusCost: 12060
+    });
+    expect(result.ticket?.consumptions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ category: StockCategory.TABLAS, quantity: 129 }),
+        expect.objectContaining({ category: StockCategory.TELAS, quantity: 77 }),
+        expect.objectContaining({ category: StockCategory.ARTEFACTOS, quantity: 12 }),
+        expect.objectContaining({ category: StockCategory.DIARIOS_VACIOS, quantity: 37 })
+      ])
+    );
+    expect(stockItem(stock, StockCategory.TABLAS, Tier.T5)).toMatchObject({ quantity: 11 });
+    expect(stockItem(stock, StockCategory.TELAS, Tier.T5)).toMatchObject({ quantity: 63 });
+    expect(stockItem(stock, StockCategory.ARTEFACTOS, Tier.T5)).toMatchObject({ quantity: 128 });
+    expect(stockItem(stock, StockCategory.DIARIOS_VACIOS, Tier.T5)).toMatchObject({ quantity: 103 });
   });
 
   it("deletes an open ticket without mutating stock or history", async () => {
@@ -1441,6 +1521,85 @@ describe("tickets", () => {
     expect(closedTicket?.unitCost).toBeCloseTo(24674.6667, 4);
   });
 
+  it("updates closed ticket material costs and recalculates ticket totals, movements, and staff lots", async () => {
+    await seedRecipeStock(Tier.T5, 100, 1000);
+
+    const ticket = await createRecipe1Ticket(Tier.T5);
+    await service.closeTicket(closeInput(ticket.id));
+    const closedTicket = (await service.listHistory()).find((item) => item.id === ticket.id);
+    const tableConsumption = closedTicket?.consumptions.find((consumption) => consumption.category === StockCategory.TABLAS);
+
+    const updatedTicket = await service.updateClosedTicketMaterialCosts({
+      ticketId: ticket.id,
+      materialCosts: [{ consumptionId: tableConsumption?.id ?? "", total: 800000 }]
+    });
+    const updatedConsumption = await prisma.ticketConsumption.findUniqueOrThrow({
+      where: { id: tableConsumption?.id ?? "" }
+    });
+    const stockMovement = await prisma.stockMovement.findFirstOrThrow({
+      where: { ticketId: ticket.id, type: "CONSUMO", category: StockCategory.TABLAS, tier: Tier.T5 }
+    });
+    const staffLot = await prisma.staffStockLot.findFirstOrThrow({ where: { ticketId: ticket.id } });
+
+    expect(updatedTicket.materialTotal).toBe(869000);
+    expect(updatedTicket.investmentTotal).toBeCloseTo(875048, 4);
+    expect(updatedTicket.unitCost).toBeCloseTo(145841.3333, 4);
+    expect(updatedConsumption.discountedTotal).toBe(800000);
+    expect(updatedConsumption.averageCostUsed).toBeCloseTo(10958.9041, 4);
+    expect(stockMovement.total).toBe(800000);
+    expect(staffLot.unitCost).toBeCloseTo(145841.3333, 4);
+  });
+
+  it("rejects invalid closed ticket material cost corrections", async () => {
+    await seedRecipeStock(Tier.T5, 100, 1000);
+
+    const openTicket = await createRecipe1Ticket(Tier.T5);
+    const closedTicket = await createRecipe1Ticket(Tier.T5);
+    await service.closeTicket(closeInput(closedTicket.id));
+    const closed = (await service.listHistory()).find((ticket) => ticket.id === closedTicket.id);
+    const consumption = closed?.consumptions[0];
+
+    await expect(
+      service.updateClosedTicketMaterialCosts({
+        ticketId: openTicket.id,
+        materialCosts: [{ consumptionId: consumption?.id ?? "", total: 800000 }]
+      })
+    ).rejects.toThrow("cerrado");
+    await expect(
+      service.updateClosedTicketMaterialCosts({
+        ticketId: closedTicket.id,
+        materialCosts: [{ consumptionId: consumption?.id ?? "", total: -1 }]
+      })
+    ).rejects.toThrow("mayores o iguales");
+    await expect(
+      service.updateClosedTicketMaterialCosts({
+        ticketId: closedTicket.id,
+        materialCosts: [{ consumptionId: "missing-consumption", total: 800000 }]
+      })
+    ).rejects.toThrow("no pertenecen");
+  });
+
+  it("recalculates HistoryXL summaries when a ticket material cost changes", async () => {
+    for (const tier of [Tier.T5, Tier.T6, Tier.T7, Tier.T8]) {
+      await seedRecipeStock(tier, 100, 1000);
+      const ticket = await service.createTicket({ tier, tax: 100, recipeId: "RECETA_1", idPrefix: "XL" });
+      await service.closeTicket(closeInput(ticket.id));
+    }
+    const savedHistory = await service.saveTicketAnalizerHistory(createHistoryInput({ summary: createZeroSummary() }));
+    const t5Ticket = (await service.listHistory()).find((ticket) => ticket.id === "XL-0001");
+    const tableConsumption = t5Ticket?.consumptions.find((consumption) => consumption.category === StockCategory.TABLAS);
+
+    await service.updateClosedTicketMaterialCosts({
+      ticketId: "XL-0001",
+      materialCosts: [{ consumptionId: tableConsumption?.id ?? "", total: 800000 }]
+    });
+    const recalculatedHistory = await service.getTicketAnalizerHistory(savedHistory.id);
+
+    expect(recalculatedHistory?.summary.totalQuantity).toBe(20);
+    expect(recalculatedHistory?.summary.totalCost).toBeGreaterThan(0);
+    expect(recalculatedHistory?.summary.totalCost).not.toBe(createZeroSummary().totalCost);
+  });
+
   it("sells staff stock and records a movement", async () => {
     await seedRecipeStock(Tier.T5, 100, 1000);
     const ticket = await createRecipe1Ticket(Tier.T5);
@@ -1765,6 +1924,17 @@ function closeInput(ticketId: string, overrides: Partial<CloseTicketInput> = {})
     leftoverClothsQuantity: 1,
     producedStaffs: [{ quality: StaffQuality.NORMAL, quantity: 6 }],
     ...overrides
+  };
+}
+
+function createZeroSummary() {
+  return {
+    grossSale: 0,
+    netProfit: 0,
+    profitBeforeTaxes: 0,
+    taxesAndFees: 0,
+    totalCost: 0,
+    totalQuantity: 0
   };
 }
 

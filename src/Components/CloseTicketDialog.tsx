@@ -11,11 +11,12 @@ import {
   staffQualities,
   staffQualityLabels
 } from "../app-data";
-import { normalizeThousandsInput, parseThousands } from "../number-format";
+import { normalizeThousandsInput, parseThousands, formatThousands } from "../number-format";
 import { useHistoryStore } from "../stores/history-store";
 import { useStaffStockStore } from "../stores/staff-stock-store";
 import { useStockStore } from "../stores/stock-store";
 import { useTicketStore } from "../stores/ticket-store";
+import { calculateFilledDiariesDiscount } from "./close-ticket-discount";
 import "./CloseTicketDialog.scss";
 
 const staffQualityTones: Record<StaffQualityView, { color: string; ink: string }> = {
@@ -29,6 +30,7 @@ const staffQualityTones: Record<StaffQualityView, { color: string; ink: string }
 export function CloseTicketDialog({ ticket }: { ticket: FabricationTicketView }) {
   const [open, setOpen] = useState(false);
   const [filledDiariesQuantity, setFilledDiariesQuantity] = useState("");
+  const [filledDiaryUnitPrice, setFilledDiaryUnitPrice] = useState("");
   const [filledDiariesDiscount, setFilledDiariesDiscount] = useState("");
   const [leftoverTablesQuantity, setLeftoverTablesQuantity] = useState("");
   const [leftoverClothsQuantity, setLeftoverClothsQuantity] = useState("");
@@ -61,8 +63,18 @@ export function CloseTicketDialog({ ticket }: { ticket: FabricationTicketView })
   );
   const defaultLeftoverTablesQuantity = tableSuggestions[0] ?? 0;
   const defaultLeftoverClothsQuantity = clothSuggestions[0] ?? 0;
+  const effectiveFilledDiariesQuantity =
+    filledDiariesQuantity === "" ? defaultFilledDiariesQuantity : parseThousands(filledDiariesQuantity);
+  const filledDiaryCalculatedDiscount = calculateFilledDiariesDiscount(
+    effectiveFilledDiariesQuantity,
+    parseThousands(filledDiaryUnitPrice)
+  );
   const tableSuggestionsId = `leftover-tables-${ticket.id}`;
   const clothSuggestionsId = `leftover-cloths-${ticket.id}`;
+
+  const applyFilledDiaryDiscount = () => {
+    setFilledDiariesDiscount(formatThousands(String(filledDiaryCalculatedDiscount)));
+  };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -110,6 +122,7 @@ export function CloseTicketDialog({ ticket }: { ticket: FabricationTicketView })
       await Promise.all([loadStock(), loadHistory(), loadStaffStock(), loadStaffStockLots(), loadStaffMovements()]);
       setOpen(false);
       setFilledDiariesQuantity("");
+      setFilledDiaryUnitPrice("");
       setFilledDiariesDiscount("");
       setLeftoverTablesQuantity("");
       setLeftoverClothsQuantity("");
@@ -175,6 +188,31 @@ export function CloseTicketDialog({ ticket }: { ticket: FabricationTicketView })
                       placeholder={formatNumber(defaultFilledDiariesDiscount)}
                     />
                   </label>
+                  <div className="close-ticket-dialog__discount-tool">
+                    <label className="close-ticket-dialog__field">
+                      <span>Precio unitario diario lleno</span>
+                      <input
+                        value={filledDiaryUnitPrice}
+                        onChange={(event) => setFilledDiaryUnitPrice(normalizeThousandsInput(event.target.value))}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9.]*"
+                        placeholder="0"
+                      />
+                    </label>
+                    <div className="close-ticket-dialog__discount-result">
+                      <span>Descuento diarios llenos ({formatNumber(effectiveFilledDiariesQuantity)}):</span>
+                      <strong>{formatNumber(filledDiaryCalculatedDiscount)}</strong>
+                      <button
+                        className="close-ticket-dialog__tool-button"
+                        type="button"
+                        onClick={applyFilledDiaryDiscount}
+                        disabled={filledDiaryCalculatedDiscount <= 0}
+                      >
+                        Aplicar
+                      </button>
+                    </div>
+                  </div>
                   <label className="close-ticket-dialog__field">
                     <span>Cantidad de Tablas Sobrantes</span>
                     <input

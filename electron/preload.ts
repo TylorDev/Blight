@@ -9,7 +9,8 @@ import type {
   CreatePurchaseInput,
   CreateTicketInput,
   SellStaffStockInput,
-  TicketAnalizerHistoryInput
+  TicketAnalizerHistoryInput,
+  UpdateClosedTicketMaterialCostsInput
 } from "./types";
 
 const api: AppApi = {
@@ -21,6 +22,8 @@ const api: AppApi = {
     ipcRenderer.invoke("purchase:correctLine", input),
   listPurchaseInvoices: () => ipcRenderer.invoke("purchase:listInvoices"),
   createTicket: (input: CreateTicketInput) => ipcRenderer.invoke("ticket:create", input),
+  updateClosedTicketMaterialCosts: (input: UpdateClosedTicketMaterialCostsInput) =>
+    ipcRenderer.invoke("ticket:updateClosedMaterialCosts", input),
   deleteOpenTicket: (ticketId: string) => ipcRenderer.invoke("ticket:deleteOpen", ticketId),
   listTickets: () => ipcRenderer.invoke("ticket:list"),
   listOpenTickets: () => ipcRenderer.invoke("ticket:listOpen"),

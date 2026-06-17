@@ -8,6 +8,7 @@ const expectedApiKeys = [
   "correctPurchaseInvoiceLine",
   "listPurchaseInvoices",
   "createTicket",
+  "updateClosedTicketMaterialCosts",
   "deleteOpenTicket",
   "listTickets",
   "listOpenTickets",
@@ -70,6 +71,10 @@ describe("preload", () => {
       recipeId: "RECETA_2",
       leftoverTablesQuantity: 10,
       leftoverClothsQuantity: 7
+    });
+    await api.updateClosedTicketMaterialCosts({
+      ticketId: "ticket-1",
+      materialCosts: [{ consumptionId: "consumption-1", total: 800000 }]
     });
     await api.deleteOpenTicket("ticket-1");
     await api.listTickets();
@@ -139,6 +144,7 @@ describe("preload", () => {
           leftoverClothsQuantity: 7
         }
       ],
+      ["ticket:updateClosedMaterialCosts", { ticketId: "ticket-1", materialCosts: [{ consumptionId: "consumption-1", total: 800000 }] }],
       ["ticket:deleteOpen", "ticket-1"],
       ["ticket:list"],
       ["ticket:listOpen"],

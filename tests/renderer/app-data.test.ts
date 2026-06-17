@@ -2,16 +2,23 @@ import { describe, expect, it } from "vitest";
 import {
   calculateLeftoverCreditValue,
   calculateTicketPreview,
+  formatAvailableAtFromClosedAt,
+  formatDate,
   getRecipeFocusCost,
   getDefaultFilledDiariesDiscount,
   getDefaultFilledDiariesQuantity,
   getDefaultTicketTax,
   getRecentLeftoverQuantitySuggestions,
+  recipeIds,
   ticketRecipes
 } from "../../src/app-data";
 import { createLeftoverCredit, createStockItem, createTicket } from "./mock-blight";
 
 describe("app-data", () => {
+  it("formats ticket availability 72 hours after closing", () => {
+    expect(formatAvailableAtFromClosedAt("2026-01-01T10:30:00.000Z")).toBe(formatDate("2026-01-04T10:30:00.000Z"));
+  });
+
   it("calculates leftover credit value from current stock average cost", () => {
     const stock = [
       createStockItem({ category: "TABLAS", tier: "T5", averageCost: 1000 }),
@@ -102,6 +109,51 @@ describe("app-data", () => {
     ]);
     expect(getDefaultFilledDiariesQuantity("T5", "RECETA_2")).toBe(22);
     expect(getRecipeFocusCost("RECETA_2")).toBe(7035);
+  });
+
+  it("defines the bonus 10 percent recipe", () => {
+    expect(recipeIds).toContain("RECETA_BONUS_10");
+    expect(ticketRecipes.RECETA_BONUS_10).toMatchObject({
+      id: "RECETA_BONUS_10",
+      label: "Bonus 10%",
+      staffQuantity: 7,
+      diaryByTier: {
+        T5: 22,
+        T6: 16,
+        T7: 10,
+        T8: 5
+      },
+      materials: [
+        { category: "TABLAS", quantity: 67 },
+        { category: "TELAS", quantity: 40 },
+        { category: "ARTEFACTOS", quantity: 7 }
+      ]
+    });
+    expect(getDefaultFilledDiariesQuantity("T5", "RECETA_BONUS_10")).toBe(22);
+    expect(getRecipeFocusCost("RECETA_BONUS_10")).toBe(7035);
+  });
+
+  it("defines the payday recipe", () => {
+    expect(recipeIds).toContain("RECETA_PAYDAY");
+    expect(ticketRecipes.RECETA_PAYDAY).toMatchObject({
+      id: "RECETA_PAYDAY",
+      label: "Payday",
+      staffQuantity: 12,
+      diaryByTier: {
+        T5: 37,
+        T6: 28,
+        T7: 18,
+        T8: 9
+      },
+      materials: [
+        { category: "TABLAS", quantity: 129 },
+        { category: "TELAS", quantity: 77 },
+        { category: "ARTEFACTOS", quantity: 12 }
+      ]
+    });
+    expect(getDefaultFilledDiariesQuantity("T5", "RECETA_PAYDAY")).toBe(37);
+    expect(getDefaultFilledDiariesQuantity("T8", "RECETA_PAYDAY")).toBe(9);
+    expect(getRecipeFocusCost("RECETA_PAYDAY")).toBe(12060);
   });
 
   it("uses the most recent closed ticket tax across tiers", () => {

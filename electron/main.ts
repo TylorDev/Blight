@@ -10,7 +10,8 @@ import type {
   CreatePurchaseInput,
   CreateTicketInput,
   SellStaffStockInput,
-  TicketAnalizerHistoryInput
+  TicketAnalizerHistoryInput,
+  UpdateClosedTicketMaterialCostsInput
 } from "./types";
 
 type ResolveFilename = (
@@ -160,7 +161,8 @@ async function bootstrapApp() {
       listTickets,
       listTicketAnalizerHistory,
       saveTicketAnalizerHistory,
-      sellStaffStock
+      sellStaffStock,
+      updateClosedTicketMaterialCosts
     } = inventoryService;
 
     configureDatabaseUrl();
@@ -175,6 +177,9 @@ async function bootstrapApp() {
     );
     ipcMain.handle("purchase:listInvoices", () => listPurchaseInvoices());
     ipcMain.handle("ticket:create", (_event, input: CreateTicketInput) => createTicket(input));
+    ipcMain.handle("ticket:updateClosedMaterialCosts", (_event, input: UpdateClosedTicketMaterialCostsInput) =>
+      updateClosedTicketMaterialCosts(input)
+    );
     ipcMain.handle("ticket:deleteOpen", (_event, ticketId: string) => deleteOpenTicket(ticketId));
     ipcMain.handle("ticket:list", () => listTickets());
     ipcMain.handle("ticket:listOpen", () => listOpenTickets());

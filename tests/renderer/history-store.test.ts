@@ -64,4 +64,39 @@ describe("history-store", () => {
     expect(useHistoryStore.getState().error).toBe("history clear unavailable");
     expect(useHistoryStore.getState().loading).toBe(false);
   });
+
+  it("updates closed ticket material costs and refreshes history", async () => {
+    const updatedTicket = createTicket({ status: "CERRADO", materialTotal: 800000, closedAt: "2026-01-01T01:00:00.000Z" });
+    const refreshedHistory = [updatedTicket];
+    blight.updateClosedTicketMaterialCosts.mockResolvedValue(updatedTicket);
+    blight.listHistory.mockResolvedValue(refreshedHistory);
+
+    const result = await useHistoryStore.getState().updateClosedTicketMaterialCosts({
+      ticketId: "ticket-1",
+      materialCosts: [{ consumptionId: "consumption-1", total: 800000 }]
+    });
+
+    expect(result).toEqual(updatedTicket);
+    expect(blight.updateClosedTicketMaterialCosts).toHaveBeenCalledWith({
+      ticketId: "ticket-1",
+      materialCosts: [{ consumptionId: "consumption-1", total: 800000 }]
+    });
+    expect(blight.listHistory).toHaveBeenCalledTimes(1);
+    expect(useHistoryStore.getState().tickets).toEqual(refreshedHistory);
+  });
+
+  it("stores and rethrows material cost update errors without refreshing history", async () => {
+    const failure = new Error("cost update failed");
+    blight.updateClosedTicketMaterialCosts.mockRejectedValue(failure);
+
+    await expect(
+      useHistoryStore.getState().updateClosedTicketMaterialCosts({
+        ticketId: "ticket-1",
+        materialCosts: [{ consumptionId: "consumption-1", total: 800000 }]
+      })
+    ).rejects.toThrow("cost update failed");
+
+    expect(useHistoryStore.getState().error).toBe("cost update failed");
+    expect(blight.listHistory).not.toHaveBeenCalled();
+  });
 });

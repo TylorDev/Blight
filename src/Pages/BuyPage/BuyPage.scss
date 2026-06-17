@@ -227,17 +227,21 @@
 .invoice-product__emergency {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  min-height: 32px;
   border: 1px solid #7f1d1d;
   border-radius: 6px;
-  padding: 7px 9px;
+  padding: 0 10px;
   background: #1f0f0f;
   color: #fecaca;
   font-size: 12px;
   font-weight: 800;
   line-height: 1;
+  white-space: nowrap;
 
   svg {
+    flex: 0 0 auto;
     width: 14px;
     height: 14px;
   }
@@ -245,7 +249,7 @@
 
 .invoice-correction {
   display: grid;
-  grid-template-columns: 1.2fr 0.6fr 0.8fr 0.9fr auto;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
   gap: 10px;
   align-items: end;
   border: 1px solid #3f3f46;
@@ -265,10 +269,13 @@
 
   select,
   input {
+    box-sizing: border-box;
+    width: 100%;
     min-width: 0;
+    min-height: 38px;
     border: 1px solid #3f3f46;
     border-radius: 6px;
-    padding: 8px 9px;
+    padding: 0 9px;
     background: #09090b;
     color: #f4f4f5;
     font-size: 13px;
@@ -281,7 +288,14 @@
 
 .invoice-correction__actions {
   display: flex;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
   gap: 8px;
+
+  .button {
+    min-width: 108px;
+    white-space: nowrap;
+  }
 }
 
 @media (max-width: 1080px) {
@@ -304,6 +318,12 @@
   }
 
   .invoice-correction__actions {
-    justify-content: flex-end;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+
+    .button {
+      width: 100%;
+      min-width: 0;
+    }
   }
 }

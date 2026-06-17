@@ -50,6 +50,40 @@
   white-space: nowrap;
 }
 
+.ticket-detail-dialog__error {
+  margin: 0;
+  color: #fca5a5;
+  font-size: 12px;
+}
+
+.ticket-detail-availability {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 38px;
+  border: 1px solid color-mix(in srgb, #d6b446 36%, #27272a);
+  border-radius: 8px;
+  padding: 0 12px;
+  background:
+    linear-gradient(90deg, rgba(214, 180, 70, 0.14), transparent),
+    #09090b;
+
+  span {
+    color: #a1a1aa;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: #fde68a;
+    font-size: 13px;
+    font-weight: 800;
+    text-align: right;
+  }
+}
+
 .ticket-detail-dialog__close {
   position: absolute;
   top: 12px;
@@ -72,6 +106,25 @@
   &:hover {
     background: #27272a;
     color: #f4f4f5;
+  }
+}
+
+.ticket-detail-emergency {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #7f1d1d;
+  border-radius: 6px;
+  padding: 7px 9px;
+  background: #1f0f0f;
+  color: #fecaca;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+
+  svg {
+    width: 14px;
+    height: 14px;
   }
 }
 
@@ -99,6 +152,46 @@
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--consumption-color) 18%, transparent), transparent),
     #09090b;
+}
+
+.ticket-cost-correction {
+  display: grid;
+  gap: 8px;
+}
+
+.ticket-cost-correction__row {
+  --consumption-color: #3f3f46;
+  --consumption-ink: #f4f4f5;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) minmax(112px, 0.55fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 54px;
+  border: 1px solid color-mix(in srgb, var(--consumption-color) 52%, #27272a);
+  border-left-width: 4px;
+  border-radius: 6px;
+  padding: 8px 10px 8px 8px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--consumption-color) 18%, transparent), transparent),
+    #09090b;
+
+  input {
+    min-width: 0;
+    min-height: 36px;
+    border: 1px solid #3f3f46;
+    border-radius: 6px;
+    padding: 0 10px;
+    background: #09090b;
+    color: #f4f4f5;
+    font-size: 13px;
+    text-align: right;
+  }
+}
+
+.ticket-cost-correction__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .consumption-item--wood {
@@ -391,11 +484,32 @@
     padding: 8px;
   }
 
+  .ticket-detail-availability {
+    display: grid;
+    gap: 3px;
+    padding: 7px 9px;
+
+    strong {
+      text-align: left;
+    }
+  }
+
   .consumption-item {
     grid-template-columns: 26px minmax(0, 1fr);
     gap: 7px;
     min-height: 46px;
     padding: 7px 8px 7px 7px;
+  }
+
+  .ticket-cost-correction__row {
+    grid-template-columns: 26px minmax(0, 1fr);
+    gap: 7px;
+    padding: 7px 8px 7px 7px;
+
+    input {
+      grid-column: 2;
+      text-align: left;
+    }
   }
 
   .consumption-item__icon {

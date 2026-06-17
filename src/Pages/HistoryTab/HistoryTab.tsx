@@ -2,7 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { Loader2, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import type { FabricationTicketView } from "../../../electron/types";
-import { formatCurrency, formatDate } from "../../app-data";
+import { formatAvailableAtFromClosedAt, formatCurrency, formatDate } from "../../app-data";
 import { EmptyState, TicketDetailDialog, TierBadge } from "../../Components";
 import { useHistoryStore } from "../../stores/history-store";
 import "./HistoryTab.scss";
@@ -95,6 +95,7 @@ function HistoryTable({ tickets }: { tickets: FabricationTicketView[] }) {
 
 function HistoryTicketDialog({ ticket }: { ticket: FabricationTicketView }) {
   const closedDate = ticket.closedAt ? formatDate(ticket.closedAt) : "";
+  const availableDate = ticket.closedAt ? formatAvailableAtFromClosedAt(ticket.closedAt) : "";
 
   return (
     <TicketDetailDialog ticket={ticket}>
@@ -108,6 +109,12 @@ function HistoryTicketDialog({ ticket }: { ticket: FabricationTicketView }) {
             <strong>Fecha:</strong>
             {closedDate}
           </span>
+          {availableDate ? (
+            <span className="history-summary__availability">
+              <strong>Disponible:</strong>
+              {availableDate}
+            </span>
+          ) : null}
           <span>
             <strong>Inversion total despues de descuentos:</strong>
             {formatCurrency(ticket.investmentTotal)}
